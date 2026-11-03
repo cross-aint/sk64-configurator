@@ -7,7 +7,8 @@ export type ApplyState =
   | { kind: 'error'; message: string }
 
 type Props = {
-  pendingCount: number
+  /** What hasn't been applied yet, e.g. "2 key changes and new lighting", or null if nothing. */
+  pending: string | null
   /** Why writing is impossible right now (not connected, unknown model…), or null if it's allowed. */
   blockedReason: string | null
   applyState: ApplyState
@@ -20,7 +21,7 @@ type Props = {
 
 /** Pending-changes summary with Apply / Discard, factory reset, and profile import/export. */
 export function ChangesBar(props: Props) {
-  const { pendingCount, blockedReason, applyState, onApply, onDiscard, onResetKeyboard, onExport, onImport } = props
+  const { pending, blockedReason, applyState, onApply, onDiscard, onResetKeyboard, onExport, onImport } = props
   const [confirmReset, setConfirmReset] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const writing = applyState.kind === 'writing'
@@ -28,24 +29,24 @@ export function ChangesBar(props: Props) {
   const summary =
     applyState.kind === 'writing'
       ? applyState.step
-      : pendingCount > 0
-        ? `${pendingCount} ${pendingCount === 1 ? 'change' : 'changes'} not on the keyboard yet`
+      : pending
+        ? `${pending[0].toUpperCase()}${pending.slice(1)} not on the keyboard yet`
         : 'Keyboard is up to date'
 
   return (
-    <div className="changes" data-pending={pendingCount > 0 || undefined}>
+    <div className="changes" data-pending={!!pending || undefined}>
       <div className="changes-main">
         <div className="changes-text">
           <strong>{summary}</strong>
-          {blockedReason && pendingCount > 0 && !writing && <span className="muted">{blockedReason}</span>}
+          {blockedReason && !!pending && !writing && <span className="muted">{blockedReason}</span>}
           {applyState.kind === 'done' && <span className="changes-ok">{applyState.message}</span>}
           {applyState.kind === 'error' && <span className="changes-bad">{applyState.message}</span>}
         </div>
         <div className="changes-actions">
-          <button className="secondary small" onClick={onDiscard} disabled={pendingCount === 0 || writing}>
+          <button className="secondary small" onClick={onDiscard} disabled={!pending || writing}>
             Discard
           </button>
-          <button className="small" onClick={onApply} disabled={pendingCount === 0 || writing || !!blockedReason}>
+          <button className="small" onClick={onApply} disabled={!pending || writing || !!blockedReason}>
             {writing ? 'Applying…' : 'Apply to keyboard'}
           </button>
         </div>

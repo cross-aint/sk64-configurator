@@ -18,6 +18,16 @@ export type ConnectionStatus =
 
 const MAX_LOG = 200
 
+/** What to write to the base layer. Leave a part out to keep what's on the keyboard. */
+export type BaseLayerWrite = {
+  /** Full key tables, one entry per firmware slot. */
+  keys?: { normal: Uint32Array; fn: Uint32Array }
+  /** Lighting block, or null to restore the built-in effects. */
+  lighting?: Uint8Array | null
+  /** Key-press lighting table (experimental), or null to clear it. */
+  keyPress?: Uint8Array | null
+}
+
 /** Owns the WebHID connection. UI components only read `status` / `log` and call the actions. */
 export function useKeyboardConnection() {
   const supported = isWebHidSupported()
@@ -86,19 +96,35 @@ export function useKeyboardConnection() {
   useEffect(() => () => void connection.current?.close(), [])
 
   /**
-   * Writes the base layer's normal and Fn key tables, then re-selects the base layer so the
-   * keyboard starts using them. Each table must have one entry per firmware slot.
+   * Writes key tables and/or lighting to the base layer, then re-selects the base layer so the
+   * keyboard starts using them. Returns the reply status of each lighting / key-press data packet.
    */
   const writeBaseLayer = useCallback(
-    async (tables: { normal: Uint32Array; fn: Uint32Array }, onStep?: (step: string) => void) => {
+    async (
+      changes: BaseLayerWrite,
+      onStep?: (step: string) => void,
+    ): Promise<{ lightingReplies: number[]; keyPressReplies: number[] }> => {
       const conn = connection.current
       if (!conn) throw new Error('The keyboard is not connected.')
-      onStep?.('Writing normal layer…')
-      await conn.writeKeyTable(Layer.Base, false, tables.normal)
-      onStep?.('Writing Fn layer…')
-      await conn.writeKeyTable(Layer.Base, true, tables.fn)
+      if (changes.keys) {
+        onStep?.('Writing normal layer…')
+        await conn.writeKeyTable(Layer.Base, false, changes.keys.normal)
+        onStep?.('Writing Fn layer…')
+        await conn.writeKeyTable(Layer.Base, true, changes.keys.fn)
+      }
+      let lightingReplies: number[] = []
+      if (changes.lighting !== undefined) {
+        onStep?.('Writing lighting…')
+        lightingReplies = await conn.writeLighting(Layer.Base, changes.lighting)
+      }
+      let keyPressReplies: number[] = []
+      if (changes.keyPress !== undefined) {
+        onStep?.('Writing key-press lighting…')
+        keyPressReplies = await conn.writeKeyPressLighting(Layer.Base, changes.keyPress)
+      }
       onStep?.('Activating…')
       await conn.setLayer(Layer.Base)
+      return { lightingReplies, keyPressReplies }
     },
     [],
   )

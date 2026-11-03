@@ -44,6 +44,14 @@
   --kb-key-tested: #d3f9d8;
   --kb-key-remapped: #3b5bdb;
   --kb-key-remapped-text: #2f4ac0;
+  --kb-key-off: #c9ccd4; /* lighting mode: LED off */
+  --kb-key-lit-text: #ffffff;
+  --kb-key-highlight: #fff3bf; /* shortcut map: keys to press */
+  --kb-key-highlight-border: #f59f00;
+  --kb-key-highlight-text: #16181d;
+  --swatch-border: rgb(0 0 0 / 0.2); /* outline around palette colors */
+  --kb-image-outline: rgb(255 255 255 / 0.9); /* key outlines over an imported picture */
+  --kb-image-outline-shadow: rgb(0 0 0 / 0.9);
   --kb-gap: 0.3rem;
   --kb-radius: 6px;
   --kb-case-radius: 14px;
@@ -95,5 +103,10 @@
     --kb-key-tested: #1f3d26;
     --kb-key-remapped: #91a7ff;
     --kb-key-remapped-text: #bac8ff;
+    --kb-key-off: #1c1f25;
+    --kb-key-highlight: #3b3015;
+    --kb-key-highlight-border: #fcc419;
+    --kb-key-highlight-text: #ffe8a1;
+    --swatch-border: rgb(255 255 255 / 0.25);
   }
 }
