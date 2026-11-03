@@ -1,0 +1,106 @@
+/* Keys are placed on a grid of key units (--kb-cols × --kb-rows), so the board scales with its container. */
+
+.kb {
+  background: var(--kb-case);
+  border-radius: var(--kb-case-radius);
+  padding: var(--kb-case-padding);
+}
+
+.kb-plate {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--kb-cols) / var(--kb-rows);
+}
+
+.kb-key {
+  position: absolute;
+  left: calc(var(--x) / var(--kb-cols) * 100%);
+  top: calc(var(--y) / var(--kb-rows) * 100%);
+  width: calc(var(--w) / var(--kb-cols) * 100% - var(--kb-gap));
+  height: calc(100% / var(--kb-rows) - var(--kb-gap));
+  margin: calc(var(--kb-gap) / 2);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: var(--kb-font-size);
+  font-weight: 600;
+  color: var(--kb-key-text);
+  background: var(--kb-key);
+  border: 1px solid var(--kb-key-border);
+  border-bottom-width: 3px;
+  border-radius: var(--kb-radius);
+  transition: background-color 80ms, transform 80ms;
+}
+
+.kb-key[data-wide] {
+  background: var(--kb-key-mod);
+}
+
+.kb-key:hover {
+  background: var(--kb-key-hover);
+  filter: none;
+}
+
+.kb-key[data-tested] {
+  background: var(--kb-key-tested);
+}
+
+.kb-key[data-selected] {
+  background: var(--kb-key-selected);
+  color: var(--kb-key-selected-text);
+  border-color: var(--kb-key-selected);
+}
+
+.kb-key[data-held] {
+  background: var(--kb-key-held);
+  color: var(--kb-key-held-text);
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+}
+
+.kb-key-cap {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  padding: 0 0.2em;
+}
+
+/* Remapped keys: accent outline plus a corner dot, so it isn't color alone. */
+.kb-key[data-remapped] {
+  border-color: var(--kb-key-remapped);
+  color: var(--kb-key-remapped-text);
+}
+
+.kb-key-badge {
+  position: absolute;
+  top: 0.25em;
+  right: 0.3em;
+  width: 0.45em;
+  height: 0.45em;
+  border-radius: 50%;
+  background: var(--kb-key-remapped);
+}
+
+.kb-key[data-locked] {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.kb-key[data-unknown] .kb-key-cap {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+/* Selected / held win over the states above. */
+.kb-key[data-selected][data-remapped] {
+  color: var(--kb-key-selected-text);
+}
+
+.kb-key[data-selected] .kb-key-badge {
+  background: var(--kb-key-selected-text);
+}
+
+.kb-key[data-held][data-remapped] {
+  color: var(--kb-key-held-text);
+}
