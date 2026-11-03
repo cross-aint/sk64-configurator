@@ -21,6 +21,8 @@ export type KeyDef = {
   led: number
   code?: string
   fnCode?: string
+  /** Additional LEDs under wide keys (lit together with `led`). */
+  extraLeds?: number[]
 }
 
 export type KeyboardLayout = {
@@ -31,6 +33,10 @@ export type KeyboardLayout = {
   fnKeyId: string
   keys: KeyDef[]
 }
+
+// LED numbers 58 and 60 aren't assigned to any key; they sit either side of the space bar's
+// LED (59), so we assume they light the space bar too.
+const EXTRA_LEDS: Record<string, number[]> = { space: [58, 60] }
 
 // Default Fn layer: number row becomes F1–F12.
 const FN_CODES: Record<string, string> = {
@@ -122,7 +128,7 @@ function buildKeys(): KeyDef[] {
   rows.forEach((row, y) => {
     let x = 0
     for (const [id, label, name, w, slot, led, code] of row) {
-      keys.push({ id, label, name, x, y, w, slot, led, code, fnCode: FN_CODES[id] })
+      keys.push({ id, label, name, x, y, w, slot, led, code, fnCode: FN_CODES[id], extraLeds: EXTRA_LEDS[id] })
       x += w
     }
   })

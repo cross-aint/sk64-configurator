@@ -22,6 +22,9 @@ export const Command = {
   /** Clears one table (keys, Fn keys, lighting…) of a layer. Table type goes in byte 2. */
   LayerResetTable: 0x21,
   LayerSetKeys: 0x22,
+  /** Which lighting effect each key plays when pressed (one byte per key slot, 0xFF = none). Untested. */
+  LayerSetKeyPressLighting: 0x26,
+  LayerSetLighting: 0x27,
   LayerSetFnKeys: 0x31,
 } as const
 
@@ -41,6 +44,8 @@ export const Layer = {
 
 export const LayerTable = {
   Keys: 1,
+  KeyPressLighting: 5,
+  Lighting: 6,
   FnKeys: 7,
 } as const
 
@@ -50,6 +55,11 @@ export type PacketHeader = {
   /** Multi-packet writes: where this packet's data goes, and how many bytes it carries. */
   offset?: number
   length?: number
+  /**
+   * Header layout for larger blocks (lighting): 24-bit offset in bytes 2–4 and the length in
+   * byte 5, instead of a 16-bit offset in bytes 2–3 and the length in byte 4.
+   */
+  wide?: boolean
 }
 
 export function buildPacket(
@@ -65,8 +75,9 @@ export function buildPacket(
   if (header.offset !== undefined) {
     packet[2] = header.offset & 0xff
     packet[3] = (header.offset >> 8) & 0xff
+    if (header.wide) packet[4] = (header.offset >> 16) & 0xff
   }
-  if (header.length !== undefined) packet[4] = header.length
+  if (header.length !== undefined) packet[header.wide ? 5 : 4] = header.length
   if (data) packet.set(data.subarray(0, DATA_SIZE), DATA_OFFSET)
   writeCrc(packet)
   return packet

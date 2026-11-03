@@ -181,15 +181,19 @@ export class KeyboardConnection {
    * Sends a block of data split across as many packets as needed (56 bytes each), each
    * tagged with its offset and length. Like the official software, this always sends
    * floor(n / 56) + 1 packets, so a block that's an exact multiple of 56 bytes ends with
-   * an empty packet.
+   * an empty packet. Returns the status byte of each reply (what it means for writes isn't
+   * documented; it's recorded so hardware tests can look for rejections).
    */
-  private async sendBlock(command: number, sub: number, block: Uint8Array) {
+  private async sendBlock(command: number, sub: number, block: Uint8Array, wide = false): Promise<number[]> {
     const packets = Math.floor(block.length / DATA_SIZE) + 1
+    const statuses: number[] = []
     for (let i = 0; i < packets; i++) {
       const offset = i * DATA_SIZE
       const chunk = block.subarray(offset, offset + DATA_SIZE)
-      await this.send(command, sub, chunk, { offset, length: chunk.length })
+      const reply = await this.send(command, sub, chunk, { offset, length: chunk.length, wide })
+      statuses.push(reply[2])
     }
+    return statuses
   }
 
   /** Switches the active layer. Also makes the keyboard pick up freshly written key tables. */
@@ -207,6 +211,25 @@ export class KeyboardConnection {
     const view = new DataView(block.buffer)
     values.forEach((value, i) => view.setUint32(i * 4, value, true))
     await this.sendBlock(fn ? Command.LayerSetFnKeys : Command.LayerSetKeys, layer, block)
+  }
+
+  /**
+   * Replaces a layer's key-press lighting table: one byte per key slot naming the lighting effect
+   * to play when that key is pressed (0xFF = none). With null, the table is just cleared.
+   * Experimental: seen in the official software's traffic, not documented.
+   */
+  async writeKeyPressLighting(layer: number, table: Uint8Array | null): Promise<number[]> {
+    await this.send(Command.LayerResetTable, layer, undefined, { arg: LayerTable.KeyPressLighting })
+    return table ? this.sendBlock(Command.LayerSetKeyPressLighting, layer, table) : []
+  }
+
+  /**
+   * Replaces a layer's lighting. With no effects block, the layer goes back to the lighting
+   * effects built into the firmware. Returns the reply status of each lighting data packet.
+   */
+  async writeLighting(layer: number, effects: Uint8Array | null): Promise<number[]> {
+    await this.send(Command.LayerResetTable, layer, undefined, { arg: LayerTable.Lighting })
+    return effects ? this.sendBlock(Command.LayerSetLighting, layer, effects, true) : []
   }
 }
 
