@@ -28,7 +28,15 @@ Open http://localhost:5173 in Chrome or Edge. Close the official Skyloong softwa
   keys as you press them.
 - **Step 3 – key remapping (done):** remap any key except Fn on the
   normal and Fn layers, combos like Ctrl+C, Apply / Discard, factory reset, profile export/import.
-- Step 4 – lighting
+  Normal-layer remaps are confirmed on hardware; Fn-layer remaps are not yet.
+- **Step 4 – lighting (done):** a list of custom lighting modes the keyboard steps through with Fn + ]:
+  painted colors (MS Paint style palette, hex input, eyedropper, or colors taken from a picture you
+  place over the keyboard), waves, rain, breathing and rainbow, with a live preview. Key reactions
+  (ripple in four shapes, key glow, flash, sweep) play when chosen keys are pressed. Animated modes
+  can borrow painted colors (dark bar, spotlight, painted rain) and run on chosen keys over a painted
+  background. Or go back to
+  the keyboard's built-in modes. Includes a map of the keyboard's Fn lighting shortcuts.
+  Painted colors and animated modes are confirmed on hardware.
 - Step 5 – macros
 
 ## Protocol notes
@@ -49,12 +57,34 @@ GK6X's `Build/Data` files are proprietary to the keyboard maker and are **not** 
   layer. `0xFFFFFFFF` means "firmware default", so only changed keys need real values.
 - Key values: `0x0200KKMM` normal key (KK = USB HID code, MM = modifier bits), `0x0300xxxx`
   media, `0x0101000B` mouse button, `0x09xxxxxx` lighting controls. Fn can't be remapped.
+- Lighting: `21 <layer> 06` resets a layer's lighting (that alone restores the built-in effects),
+  then `27 <layer>` sends the effect block: a table of 32 effect slots (16 bytes each), then each
+  effect's data. A static effect is `uint16 0`, `uint16 704`, then one `[R, G, B, FF]` color per
+  LED (176). This command's header uses a 24-bit offset in bytes 2–4 and the length in byte 5.
+- Animated effects (type 3, confirmed on hardware): one entry per frame tick, each a 22-byte bit
+  mask of lit LEDs, then color groups (fixed, rainbow or breathing) over sets of LEDs. Frames
+  only switch LEDs on and off. Fn + ] steps through every filled slot and wraps around.
+- All 32 slots work (tested with 32 static effects, about 23 KB). The app allows up to 10 modes;
+  key reactions use the remaining slots.
+- Key-press lighting (confirmed on an SK64): `26 <layer>` sends one byte per key slot naming the
+  lighting effect to play when that key is pressed, counting from 0 (`0xFF` = none);
+  `21 <layer> 05` clears it. The numbers point into the same effect table as the Fn + ] modes, so
+  reaction animations also show up as modes. Pressing a linked key plays its animation, then the
+  keyboard settles on the first mode, whichever mode was showing before. Reactions that ended
+  without a closing frame kept repeating in testing, so the app ends each one with a one-tick
+  frame. A fully dark one showed as a brief blank, so when the reaction keeps the base colors the
+  closing frame shows them too (confirmed: no blank, and it still stops the repeat).
+- Color groups: Skyloong's own effects use at most 30. Animations with more (one per color of a
+  colorful painting) lit later keys white on an SK64, so the app merges the closest colors until an
+  animation has at most 30 groups (confirmed: the white keys are gone).
+- At default speed the keyboard plays about 15 ticks per second; Fn + ← / → change how long an
+  animation takes, from about 1.75× the default (slowest) to 0.35× (fastest).
 
 ## Code layout
 
 - `src/protocol/` – talking to the keyboard (packets, checksum, WebHID connection)
-- `src/keyboard/` – SK64 layout, key value catalog, defaults, keymaps and profile files
-- `src/hooks/` – app state (connection, keymap edits, key tester)
+- `src/keyboard/` – SK64 layout, key value catalog, defaults, keymaps, lighting, Fn shortcuts and profile files
+- `src/hooks/` – app state (connection, keymap and lighting edits, paint palette, key tester)
 - `src/components/` – UI, purely presentational
 - `src/styles/tokens.css` – all colors, sizes and fonts
 
