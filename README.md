@@ -11,14 +11,20 @@ SK64 boards report one of two model IDs; both have the same 64-key layout:
 | `900000004` | `0x90219224` | "64 RGB" | Confirmed on our wired SK64, firmware v2.101 |
 | `656801886` | `0x90219221` | "SK64 RGB" | Reported by other GK6X users (v1.37) |
 
-## Run it
+## Use it
+
+Open **https://cross-aint.github.io/sk64-configurator/** in desktop Chrome or Edge, then click
+**Connect**. Close the official Skyloong software first. Nothing to install: the page talks to the
+keyboard directly and nothing leaves your computer.
+
+## Run it locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:5173 in Chrome or Edge. Close the official Skyloong software first.
+Open http://localhost:5173 in Chrome or Edge.
 
 ```bash
 npm test
@@ -130,5 +136,6 @@ GK6X's `Build/Data` files are proprietary to the keyboard maker and are **not** 
 - `src/components/` – UI, purely presentational
 - `*.test.ts` next to the code they test – automated tests (`npm test`)
 - `src/styles/tokens.css` – all colors, sizes and fonts
-
-See [DESIGN.md](DESIGN.md) for notes on redesigning the interface.
+- `public/` – the logo and browser icons; `assets/LOGO.svg` is the logo's source
+- `.github/workflows/deploy.yml` – tests, builds and publishes the site to GitHub Pages on every
+  push to `main`
