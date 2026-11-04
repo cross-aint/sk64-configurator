@@ -22,6 +22,8 @@ export const Command = {
   /** Clears one table (keys, Fn keys, lighting…) of a layer. Table type goes in byte 2. */
   LayerResetTable: 0x21,
   LayerSetKeys: 0x22,
+  /** A layer's macros (see keyboard/macros.ts). */
+  LayerSetMacros: 0x25,
   /** Which lighting effect each key plays when pressed (one byte per key slot, 0xFF = none). Untested. */
   LayerSetKeyPressLighting: 0x26,
   LayerSetLighting: 0x27,
@@ -44,6 +46,7 @@ export const Layer = {
 
 export const LayerTable = {
   Keys: 1,
+  Macros: 4,
   KeyPressLighting: 5,
   Lighting: 6,
   FnKeys: 7,

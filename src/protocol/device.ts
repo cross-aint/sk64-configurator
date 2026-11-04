@@ -205,12 +205,12 @@ export class KeyboardConnection {
    * Replaces a layer's whole key table (normal or Fn). `values` has one entry per firmware
    * slot; UNCHANGED_KEY (0xFFFFFFFF) means "use the firmware's built-in default".
    */
-  async writeKeyTable(layer: number, fn: boolean, values: Uint32Array) {
+  async writeKeyTable(layer: number, fn: boolean, values: Uint32Array): Promise<number[]> {
     await this.send(Command.LayerResetTable, layer, undefined, { arg: fn ? LayerTable.FnKeys : LayerTable.Keys })
     const block = new Uint8Array(values.length * 4)
     const view = new DataView(block.buffer)
     values.forEach((value, i) => view.setUint32(i * 4, value, true))
-    await this.sendBlock(fn ? Command.LayerSetFnKeys : Command.LayerSetKeys, layer, block)
+    return this.sendBlock(fn ? Command.LayerSetFnKeys : Command.LayerSetKeys, layer, block)
   }
 
   /**
@@ -221,6 +221,12 @@ export class KeyboardConnection {
   async writeKeyPressLighting(layer: number, table: Uint8Array | null): Promise<number[]> {
     await this.send(Command.LayerResetTable, layer, undefined, { arg: LayerTable.KeyPressLighting })
     return table ? this.sendBlock(Command.LayerSetKeyPressLighting, layer, table) : []
+  }
+
+  /** Replaces a layer's macros (see keyboard/macros.ts). With null, they're just cleared. */
+  async writeMacros(layer: number, block: Uint8Array | null): Promise<number[]> {
+    await this.send(Command.LayerResetTable, layer, undefined, { arg: LayerTable.Macros })
+    return block ? this.sendBlock(Command.LayerSetMacros, layer, block) : []
   }
 
   /**

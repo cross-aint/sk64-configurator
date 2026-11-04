@@ -20,12 +20,23 @@ const MAX_LOG = 200
 
 /** What to write to the base layer. Leave a part out to keep what's on the keyboard. */
 export type BaseLayerWrite = {
-  /** Full key tables, one entry per firmware slot. */
-  keys?: { normal: Uint32Array; fn: Uint32Array }
+  /** Full key tables, one entry per firmware slot (leave out `fn` to keep the Fn table). */
+  keys?: { normal: Uint32Array; fn?: Uint32Array }
   /** Lighting block, or null to restore the built-in effects. */
   lighting?: Uint8Array | null
   /** Key-press lighting table (experimental), or null to clear it. */
   keyPress?: Uint8Array | null
+  /** Macros block (experimental), or null to clear them. */
+  macros?: Uint8Array | null
+}
+
+/** Reply status of each data packet sent, by part (empty for parts not written). */
+export type LayerWriteReplies = {
+  macroReplies: number[]
+  /** Normal key table only. */
+  keyReplies: number[]
+  lightingReplies: number[]
+  keyPressReplies: number[]
 }
 
 /** Owns the WebHID connection. UI components only read `status` / `log` and call the actions. */
@@ -96,40 +107,49 @@ export function useKeyboardConnection() {
   useEffect(() => () => void connection.current?.close(), [])
 
   /**
-   * Writes key tables and/or lighting to the base layer, then re-selects the base layer so the
-   * keyboard starts using them. Returns the reply status of each lighting / key-press data packet.
+   * Writes macros, key tables and/or lighting to a layer, then selects that layer so the keyboard
+   * starts using them. Returns the reply status of each data packet, by part.
    */
-  const writeBaseLayer = useCallback(
-    async (
-      changes: BaseLayerWrite,
-      onStep?: (step: string) => void,
-    ): Promise<{ lightingReplies: number[]; keyPressReplies: number[] }> => {
+  const writeLayer = useCallback(
+    async (layer: number, changes: BaseLayerWrite, onStep?: (step: string) => void): Promise<LayerWriteReplies> => {
       const conn = connection.current
       if (!conn) throw new Error('The keyboard is not connected.')
+      const replies: LayerWriteReplies = { macroReplies: [], keyReplies: [], lightingReplies: [], keyPressReplies: [] }
+      // Macros before keys, so a key never points at a macro that isn't there yet.
+      if (changes.macros !== undefined) {
+        onStep?.('Writing macros…')
+        replies.macroReplies = await conn.writeMacros(layer, changes.macros)
+      }
       if (changes.keys) {
         onStep?.('Writing normal layer…')
-        await conn.writeKeyTable(Layer.Base, false, changes.keys.normal)
-        onStep?.('Writing Fn layer…')
-        await conn.writeKeyTable(Layer.Base, true, changes.keys.fn)
+        replies.keyReplies = await conn.writeKeyTable(layer, false, changes.keys.normal)
+        if (changes.keys.fn) {
+          onStep?.('Writing Fn layer…')
+          await conn.writeKeyTable(layer, true, changes.keys.fn)
+        }
       }
-      let lightingReplies: number[] = []
       if (changes.lighting !== undefined) {
         onStep?.('Writing lighting…')
-        lightingReplies = await conn.writeLighting(Layer.Base, changes.lighting)
+        replies.lightingReplies = await conn.writeLighting(layer, changes.lighting)
       }
-      let keyPressReplies: number[] = []
       if (changes.keyPress !== undefined) {
         onStep?.('Writing key-press lighting…')
-        keyPressReplies = await conn.writeKeyPressLighting(Layer.Base, changes.keyPress)
+        replies.keyPressReplies = await conn.writeKeyPressLighting(layer, changes.keyPress)
       }
       onStep?.('Activating…')
-      await conn.setLayer(Layer.Base)
-      return { lightingReplies, keyPressReplies }
+      await conn.setLayer(layer)
+      return replies
     },
     [],
   )
 
-  return { status, log, connect, disconnect, readInfo, writeBaseLayer }
+  /** writeLayer for the base layer, the one the app edits. */
+  const writeBaseLayer = useCallback(
+    (changes: BaseLayerWrite, onStep?: (step: string) => void) => writeLayer(Layer.Base, changes, onStep),
+    [writeLayer],
+  )
+
+  return { status, log, connect, disconnect, readInfo, writeLayer, writeBaseLayer }
 }
 
 function errorText(err: unknown) {
