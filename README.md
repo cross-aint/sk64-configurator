@@ -20,6 +20,15 @@ npm run dev
 
 Open http://localhost:5173 in Chrome or Edge. Close the official Skyloong software first.
 
+```bash
+npm test
+```
+
+runs the automated tests (Vitest). They pin down the bytes the keyboard accepted in hardware
+testing: packet headers and checksums, the lighting table, animations and the 30-color-group
+limit, key reactions and their closing frame, 512-byte macro records and the ~2.45 ms delay unit,
+key tables, keyboard layers, profile files, and the macro limit test.
+
 ## Status
 
 - **Step 1 – connection test (done):** connects and reads the keyboard's model, firmware ID and
@@ -40,12 +49,16 @@ Open http://localhost:5173 in Chrome or Edge. Close the official Skyloong softwa
   background. Or go back to
   the keyboard's built-in modes. Includes a map of the keyboard's Fn lighting shortcuts.
   Painted colors and animated modes are confirmed on hardware.
-- **Step 5 – macros (done):** a Macros tab with up to 16 macros of up to 63 steps
+- **Step 5 – macros (done):** a Macros tab with up to 63 macros of up to 63 steps
   (key or mouse button presses and releases, each followed by a delay in milliseconds). Steps can
   be recorded from your keyboard, typed as text, or added one key at a time. Each macro plays a set
   number of times, while held, or until pressed again. Keys on the Windows, macOS and FNX layers
   link to a macro from the key picker's Macros category (the base layer can't run macros). A
   typing box shows what a macro types and the time before each key. Confirmed on hardware.
+- **Picture of your setup:** a PNG of every remapped key, layer by layer (a keyboard drawing with
+  the changed keys called out, and a list of what each one did and does now), and every macro
+  with its keys, how it plays and a readable summary of its steps. Lighting isn't included. It
+  uses the app's colors, so it follows the light or dark theme.
 
 ## Protocol notes
 
@@ -106,7 +119,8 @@ GK6X's `Build/Data` files are proprietary to the keyboard maker and are **not** 
   8 bytes (key code, modifier bits, down / up, key / mouse, then the delay after it in
   units of about 2.45 ms: 500 measured about 1.23 s and 100 about 250 ms). GK6X's writer adds a zero byte after each macro (513 bytes); with that, nothing
   happened on an SK64, and the official software's traffic uses 512. A key runs macro `n` when its
-  key value is `0x0A01000n`.
+  key value is `0x0A01000n`. An SK64 kept 63 macros (one per key, ~32 KB) in the macro limit
+  test; that's the most the test can check.
 
 ## Code layout
 
@@ -114,6 +128,7 @@ GK6X's `Build/Data` files are proprietary to the keyboard maker and are **not** 
 - `src/keyboard/` – SK64 layout, key value catalog, defaults, keymaps, lighting, macros, Fn shortcuts and profile files
 - `src/hooks/` – app state (connection, keymap, lighting and macro edits, paint palette, key tester)
 - `src/components/` – UI, purely presentational
+- `*.test.ts` next to the code they test – automated tests (`npm test`)
 - `src/styles/tokens.css` – all colors, sizes and fonts
 
 See [DESIGN.md](DESIGN.md) for notes on redesigning the interface.
