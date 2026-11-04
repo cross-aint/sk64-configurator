@@ -7,10 +7,21 @@ import { EffectList } from './components/EffectList'
 import { EffectSettings } from './components/EffectSettings'
 import { HardwareTests } from './components/HardwareTests'
 import { KeyPressTestPanel } from './components/KeyPressTestPanel'
+import { MacroEditor } from './components/MacroEditor'
+import { useMacros } from './hooks/useMacros'
+import {
+  describeWithMacros,
+  keymapsWithoutMacro,
+  keysUsingMacro,
+  macroActions,
+  toFirmwareMacro,
+  type MacroDef,
+} from './keyboard/macroLibrary'
 import { ImageOverlay } from './components/ImageOverlay'
 import { ImageToolbar, type ImageView } from './components/ImageToolbar'
 import { KeyboardView, type KeyCap } from './components/KeyboardView'
 import { LayerTabs } from './components/LayerTabs'
+import { BoardLayerTabs } from './components/BoardLayerTabs'
 import { LightingGuide } from './components/LightingGuide'
 import { PacketLog } from './components/PacketLog'
 import { PaintToolbar, type PaintTool } from './components/PaintToolbar'
@@ -24,15 +35,28 @@ import { useKeymap } from './hooks/useKeymap'
 import { useKeyTester } from './hooks/useKeyTester'
 import { useLighting } from './hooks/useLighting'
 import { usePalette } from './hooks/usePalette'
-import { describe } from './keyboard/actions'
-import { defaultValue } from './keyboard/defaults'
+
+import { defaultFunction, defaultValue } from './keyboard/defaults'
 import { encodeEffects, MAX_EFFECTS } from './keyboard/effects'
 import { coverTransform, sampleKeyColors } from './keyboard/imageSampling'
-import { EMPTY_KEYMAP, toSlotTable, type Keymap, type LayerName } from './keyboard/keymap'
+import {
+  BOARD_LAYERS,
+  boardLayerInfo,
+  changedBoardLayers,
+  EMPTY_KEYMAPS,
+  FNX_KEY,
+  hasFnxKey,
+  toSlotTable,
+  type BoardLayer,
+  type Keymap,
+  type Keymaps,
+  type LayerName,
+} from './keyboard/keymap'
 import { SK64_LAYOUT, type KeyDef } from './keyboard/layout'
 import { baseColors, BUILTIN_LIGHTING, toKeyPressTable, toLightingBlock, type Lighting } from './keyboard/lighting'
 import { MAX_MODES, paintingsOf, slotToEffect, type EffectKind } from './keyboard/presets'
 import { buildKeyPressTest } from './keyboard/keyPressTest'
+import { encodeMacros } from './keyboard/macros'
 import { buildLimitTest, describeReplies, keyForCount } from './keyboard/limitTest'
 import { exportProfile, importProfile } from './keyboard/profile'
 import { reactionEffects } from './keyboard/reactions'
@@ -41,15 +65,18 @@ import { LIGHTING_SHORTCUTS, SHORTCUT_SOURCE } from './keyboard/shortcuts'
 const layout = SK64_LAYOUT
 const ISSUES_URL = 'https://github.com/4Redcross/sk64-configurator/issues'
 
-type Mode = 'keys' | 'lighting'
+type Mode = 'keys' | 'lighting' | 'macros'
 
 export default function App() {
-  const { status, log, connect, disconnect, readInfo, writeBaseLayer } = useKeyboardConnection()
+  const { status, log, connect, disconnect, readInfo, writeLayer, writeBaseLayer } = useKeyboardConnection()
   const keymap = useKeymap()
   const lighting = useLighting(layout)
+  const macros = useMacros()
   const palette = usePalette()
   const [mode, setMode] = useState<Mode>('keys')
   const [layer, setLayer] = useState<LayerName>('normal')
+  /** Which keyboard layer the Keys view shows and edits. */
+  const [board, setBoard] = useState<BoardLayer>('base')
   const [selected, setSelected] = useState<KeyDef | null>(null)
   const [testing, setTesting] = useState(false)
   const [paintColor, setPaintColor] = useState('#00c8ff')
@@ -70,8 +97,31 @@ export default function App() {
     writeFlag(KEY_PRESS_FLAG, dirty)
   }
 
-  const caps = useMemo(() => buildCaps(keymap.draft, layer), [keymap.draft, layer])
-  const counts = { normal: Object.keys(keymap.draft.normal).length, fn: Object.keys(keymap.draft.fn).length }
+  const boardKeys = keymap.draft[board]
+  const caps = useMemo(() => buildCaps(boardKeys, layer, board, macros.draft), [boardKeys, layer, board, macros.draft])
+  const pickerMacros = useMemo(() => macroActions(macros.draft), [macros.draft])
+  const macroIndex = macros.selected ? macros.draft.findIndex((m) => m.id === macros.selected?.id) : -1
+  const macroLinks = useMemo(
+    () =>
+      macroIndex < 0
+        ? []
+        : keysUsingMacro(keymap.draft, macroIndex).map(({ board: b, keyId, fn }) => {
+            const k = layout.keys.find((key) => key.id === keyId)
+            return `${b} · ${fn ? 'Fn + ' : ''}${k?.label || k?.name || keyId}`
+          }),
+    [keymap.draft, macroIndex],
+  )
+  const removeMacro = (id: string) => {
+    const i = macros.draft.findIndex((m) => m.id === id)
+    if (i < 0) return
+    keymap.replaceDraft(keymapsWithoutMacro(keymap.draft, i))
+    macros.remove(id)
+  }
+  const noFnxKey = board === 'fnx' && !hasFnxKey(keymap.draft.windows) && !hasFnxKey(keymap.draft.mac)
+  const counts = { normal: Object.keys(boardKeys.normal).length, fn: Object.keys(boardKeys.fn).length }
+  const boardCounts = Object.fromEntries(
+    BOARD_LAYERS.map((l) => [l.id, Object.keys(keymap.draft[l.id].normal).length + Object.keys(keymap.draft[l.id].fn).length]),
+  ) as Record<BoardLayer, number>
   // A picture is being positioned over the keyboard (Lighting mode only).
   const { image: placedImage, transform: imageTransform } = placement
   const placing = mode === 'lighting' && placedImage && imageTransform ? { image: placedImage, transform: imageTransform } : null
@@ -146,7 +196,7 @@ export default function App() {
   const lightingColors =
     sampled ?? (placing ? {} : mode === 'lighting' && custom ? (paintSlot?.colors ?? previewColors ?? {}) : undefined)
 
-  const pending = describePending(keymap.pendingCount, lighting.changed)
+  const pending = describePending(keymap.pendingCount, lighting.changed, macros.changed)
 
   const blockedReason =
     status.kind !== 'connected'
@@ -155,28 +205,72 @@ export default function App() {
         ? "Writing is only enabled for confirmed SK64 models, and this one isn't confirmed yet."
         : null
 
-  /** Writes the given parts to the keyboard and records them as applied. */
-  const write = async (target: { keys?: Keymap; lighting?: Lighting }, doneMessage: string) => {
+  /**
+   * Writes the given parts to the keyboard and records them as applied: the on-board layers' keys
+   * first, then the base layer with lighting. Afterwards the keyboard is put on `finishOn`.
+   */
+  const write = async (
+    target: {
+      keys?: Partial<Keymaps>
+      lighting?: Lighting
+      /** The macro list for the Windows, macOS and FNX layers (empty clears them). */
+      macros?: MacroDef[]
+      clearMacros?: boolean
+      finishOn?: BoardLayer
+    },
+    doneMessage: string,
+  ) => {
     if (status.kind !== 'connected') return
     const slots = status.info.bufferSizeA * status.info.bufferSizeB
+    const tables = (k: Keymap) => ({ normal: toSlotTable(layout, k.normal, slots), fn: toSlotTable(layout, k.fn, slots) })
+    // The FNX layer only works while an FNX key is held, so stay on a layer that has one.
+    const fnxHome: BoardLayer = hasFnxKey(keymap.draft.windows) || !hasFnxKey(keymap.draft.mac) ? 'windows' : 'mac'
+    const finishOn = target.finishOn ?? (board === 'fnx' ? fnxHome : board)
     try {
-      const changes: BaseLayerWrite = {}
-      if (target.keys) {
-        changes.keys = {
-          normal: toSlotTable(layout, target.keys.normal, slots),
-          fn: toSlotTable(layout, target.keys.fn, slots),
-        }
+      const empty = target.macros?.find((m) => m.steps.length === 0)
+      if (empty) throw new Error(`Macro “${empty.name}” has no steps yet: add some, or remove it.`)
+      const macroBlock =
+        target.macros !== undefined
+          ? target.macros.length
+            ? encodeMacros(target.macros.map(toFirmwareMacro))
+            : null
+          : target.clearMacros
+            ? null
+            : undefined
+      setApplyState({ kind: 'writing', step: 'Starting…' })
+      const keys: Partial<Record<BoardLayer, Keymap>> = { ...target.keys }
+
+      for (const info of BOARD_LAYERS) {
+        if (info.id === 'base') continue
+        const k = keys[info.id]
+        if (!k && macroBlock === undefined) continue
+        await writeLayer(
+          info.firmware,
+          { keys: k ? tables(k) : undefined, macros: macroBlock },
+          (step) => setApplyState({ kind: 'writing', step: `${info.name} layer: ${step}` }),
+        )
       }
+
+      const changes: BaseLayerWrite = {}
+      if (keys.base) changes.keys = tables(keys.base)
       if (target.lighting) changes.lighting = toLightingBlock(layout, target.lighting)
       // Key reactions go with the lighting; otherwise clear links left by the key-press test.
       if (target.lighting) changes.keyPress = toKeyPressTable(layout, target.lighting, slots)
       else if (keyPressDirty) changes.keyPress = null
-      setApplyState({ kind: 'writing', step: 'Starting…' })
-      await writeBaseLayer(changes, (step) => setApplyState({ kind: 'writing', step }))
+      if (Object.keys(changes).length > 0 || finishOn === 'base') {
+        await writeBaseLayer(changes, (step) => setApplyState({ kind: 'writing', step: `Base layer: ${step}` }))
+      }
+      // Writing selects each layer in turn; end on the one asked for.
+      if (finishOn !== 'base') {
+        await writeLayer(boardLayerInfo(finishOn).firmware, {}, (step) => setApplyState({ kind: 'writing', step }))
+      }
+
       if (changes.keyPress !== undefined && keyPressDirty) setKeyPressDirty(false)
       if (target.keys) keymap.markApplied(target.keys)
       if (target.lighting) lighting.markApplied(target.lighting)
-      setApplyState({ kind: 'done', message: doneMessage })
+      if (target.macros) macros.markApplied(target.macros)
+      const where = finishOn === 'base' ? '' : ` The keyboard is now on the ${boardLayerInfo(finishOn).name} layer.`
+      setApplyState({ kind: 'done', message: doneMessage + where })
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
       setApplyState({
@@ -186,28 +280,41 @@ export default function App() {
     }
   }
 
-  const apply = () =>
-    write(
+  const apply = () => {
+    const changed = changedBoardLayers(keymap.draft, keymap.applied)
+    return write(
       {
-        keys: keymap.pendingCount > 0 ? keymap.draft : undefined,
+        keys: changed.length ? Object.fromEntries(changed.map((id) => [id, keymap.draft[id]])) : undefined,
         lighting: lighting.changed ? lighting.draft : undefined,
+        macros: macros.changed ? macros.draft : undefined,
       },
       'Saved to the keyboard.',
     )
+  }
 
   const resetKeyboard = async () => {
-    await write({ keys: EMPTY_KEYMAP, lighting: BUILTIN_LIGHTING }, 'Keyboard restored to factory defaults.')
-    keymap.replaceDraft(EMPTY_KEYMAP)
+    await write(
+      { keys: EMPTY_KEYMAPS, lighting: BUILTIN_LIGHTING, macros: [], clearMacros: true, finishOn: 'base' },
+      'Keyboard restored to factory defaults.',
+    )
+    keymap.replaceDraft(EMPTY_KEYMAPS)
     lighting.replaceDraft(BUILTIN_LIGHTING)
+    macros.replaceDraft([])
   }
 
   const discard = () => {
     keymap.discard()
     lighting.discard()
+    macros.discard()
   }
 
   const exportFile = () => {
-    const text = exportProfile(layout, { name: 'My SK64 profile', keymap: keymap.draft, lighting: lighting.draft })
+    const text = exportProfile(layout, {
+      name: 'My SK64 profile',
+      keymaps: keymap.draft,
+      lighting: lighting.draft,
+      macros: macros.draft,
+    })
     const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
     const a = document.createElement('a')
     a.href = url
@@ -219,8 +326,9 @@ export default function App() {
   const importFile = (text: string) => {
     try {
       const profile = importProfile(layout, text)
-      keymap.replaceDraft(profile.keymap)
+      keymap.replaceDraft(profile.keymaps)
       lighting.replaceDraft(profile.lighting)
+      macros.replaceDraft(profile.macros)
       setApplyState({ kind: 'done', message: `Loaded "${profile.name}". Review it, then click Apply.` })
     } catch (err) {
       setApplyState({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
@@ -313,7 +421,7 @@ export default function App() {
     placement.close()
   }
 
-  const selectedOverride = selected ? (keymap.draft[layer][selected.id] ?? null) : null
+  const selectedOverride = selected ? (boardKeys[layer][selected.id] ?? null) : null
 
   const deviceCard = (
     <section className="card">
@@ -378,7 +486,20 @@ export default function App() {
                 >
                   Lighting
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === 'macros'}
+                  onClick={() => {
+                    setMode('macros')
+                    setTesting(false)
+                  }}
+                >
+                  Macros
+                  {macros.draft.length > 0 && <span className="count">{macros.draft.length}</span>}
+                </button>
               </div>
+              {mode === 'keys' && <BoardLayerTabs board={board} onChange={setBoard} counts={boardCounts} />}
               {mode === 'keys' && <LayerTabs layer={layer} onChange={setLayer} counts={counts} />}
               {mode === 'lighting' && (
                 <div className="segmented" role="radiogroup" aria-label="Lighting">
@@ -494,47 +615,64 @@ export default function App() {
               onChange={(change) => lighting.updateSlot(slot.id, change)}
             />
           )}
-          <p className="muted hint">
-            {placing
-              ? imageView === 'picture'
-                ? 'Drag to move the picture, scroll or pinch to zoom, Shift + scroll to rotate. Each key takes the average color inside its outline; keys outside the picture turn off.'
-                : 'This is how the keys will light up. Switch back to Picture to adjust, or click Use these colors.'
-              : reaction
-                ? `Preview of the reaction${reaction.keys.length ? '' : ' (on G until you choose keys)'}. Click keys to choose which ones trigger it.`
-                : hintText(mode, layer, testing, lighting.draft, tool, slot?.kind ?? null)}
-          </p>
-          <KeyboardView
-            layout={layout}
-            caps={mode === 'keys' ? caps : undefined}
-            colors={lightingColors}
-            selectedId={mode === 'keys' ? selected?.id : null}
-            heldIds={testing ? tester.held : undefined}
-            testedIds={testing ? tester.tested : undefined}
-            markedIds={chosenKeys}
-            onSelect={
-              mode === 'keys'
-                ? (key) => setSelected((cur) => (cur?.id === key.id ? null : key))
-                : reaction
-                  ? toggleReactionKey
-                  : choosingKeys
-                    ? toggleChosenKey
-                  : canPaint && tool === 'pick'
-                    ? pickKey
-                    : undefined
-            }
-            onPaint={canPaint && tool !== 'pick' ? paintKey : undefined}
-            overlay={
-              placing && imageView === 'picture' ? (
-                <ImageOverlay
-                  layout={layout}
-                  src={placing.image.url}
-                  aspect={placing.image.height / placing.image.width}
-                  transform={placing.transform}
-                  onChange={placement.update}
-                />
-              ) : undefined
-            }
-          />
+          {mode === 'macros' && (
+            <MacroEditor
+              layout={layout}
+              macros={macros.draft}
+              selected={macros.selected}
+              full={macros.full}
+              links={macroLinks}
+              onSelect={macros.select}
+              onAdd={() => macros.add()}
+              onUpdate={macros.update}
+              onRemove={removeMacro}
+            />
+          )}
+          {mode !== 'macros' && (
+            <>
+              <p className="muted hint">
+                {placing
+                  ? imageView === 'picture'
+                    ? 'Drag to move the picture, scroll or pinch to zoom, Shift + scroll to rotate. Each key takes the average color inside its outline; keys outside the picture turn off.'
+                    : 'This is how the keys will light up. Switch back to Picture to adjust, or click Use these colors.'
+                  : reaction
+                    ? `Preview of the reaction${reaction.keys.length ? '' : ' (on G until you choose keys)'}. Click keys to choose which ones trigger it.`
+                    : hintText(mode, board, layer, testing, lighting.draft, tool, slot?.kind ?? null, noFnxKey)}
+              </p>
+              <KeyboardView
+                layout={layout}
+                caps={mode === 'keys' ? caps : undefined}
+                colors={lightingColors}
+                selectedId={mode === 'keys' ? selected?.id : null}
+                heldIds={testing ? tester.held : undefined}
+                testedIds={testing ? tester.tested : undefined}
+                markedIds={chosenKeys}
+                onSelect={
+                  mode === 'keys'
+                    ? (key) => setSelected((cur) => (cur?.id === key.id ? null : key))
+                    : reaction
+                      ? toggleReactionKey
+                      : choosingKeys
+                        ? toggleChosenKey
+                      : canPaint && tool === 'pick'
+                        ? pickKey
+                        : undefined
+                }
+                onPaint={canPaint && tool !== 'pick' ? paintKey : undefined}
+                overlay={
+                  placing && imageView === 'picture' ? (
+                    <ImageOverlay
+                      layout={layout}
+                      src={placing.image.url}
+                      aspect={placing.image.height / placing.image.width}
+                      transform={placing.transform}
+                      onChange={placement.update}
+                    />
+                  ) : undefined
+                }
+              />
+            </>
+          )}
           <ChangesBar
             pending={pending}
             blockedReason={blockedReason}
@@ -553,13 +691,24 @@ export default function App() {
               <h2>Selected key</h2>
               {selected ? (
                 <RemapPanel
-                  key={selected.id + layer}
+                  key={selected.id + board + layer}
                   keyDef={selected}
+                  boardName={boardLayerInfo(board).name}
                   layer={layer}
                   override={selectedOverride}
-                  defaultValue={defaultValue(selected, layer === 'fn')}
+                  defaultValue={defaultValue(selected, layer === 'fn', board)}
+                  defaultName={defaultFunction(selected, layer === 'fn', board)?.name ?? null}
+                  unavailable={(action) =>
+                    action.value === FNX_KEY && !boardLayerInfo(board).fnxKeys
+                      ? 'FNX keys go on the Windows or macOS layer'
+                      : action.group === 'Macros' && !boardLayerInfo(board).macros
+                        ? 'The base layer can’t run macros: use the Windows, macOS or FNX layer'
+                        : null
+                  }
+                  extraActions={pickerMacros}
+                  describeValue={(value) => describeWithMacros(value, macros.draft)}
                   locked={selected.id === layout.fnKeyId}
-                  onChange={(value) => keymap.setKey(layer, selected.id, value)}
+                  onChange={(value) => keymap.setKey(board, layer, selected.id, value)}
                 />
               ) : (
                 <p className="muted">Click a key on the keyboard to change what it does.</p>
@@ -567,6 +716,8 @@ export default function App() {
             </section>
             {deviceCard}
           </div>
+        ) : mode === 'macros' ? (
+          deviceCard
         ) : (
           <>
             <section className="card">
@@ -615,7 +766,6 @@ export default function App() {
 }
 
 const KEY_PRESS_FLAG = 'sk64.keypress.dirty.v1'
-
 function readFlag(key: string): boolean {
   try {
     return localStorage.getItem(key) === '1'
@@ -633,41 +783,57 @@ function writeFlag(key: string, on: boolean) {
   }
 }
 
-function describePending(keyChanges: number, lightingChanged: boolean): string | null {
+function describePending(keyChanges: number, lightingChanged: boolean, macrosChanged: boolean): string | null {
   const parts: string[] = []
   if (keyChanges > 0) parts.push(`${keyChanges} key ${keyChanges === 1 ? 'change' : 'changes'}`)
   if (lightingChanged) parts.push('new lighting')
-  return parts.length ? parts.join(' and ') : null
+  if (macrosChanged) parts.push('macro changes')
+  return parts.length ? parts.slice(0, -1).join(', ') + (parts.length > 1 ? ' and ' : '') + parts.at(-1) : null
 }
 
 function hintText(
   mode: Mode,
+  board: BoardLayer,
   layer: LayerName,
   testing: boolean,
   lighting: Lighting,
   tool: PaintTool,
   slotKind: EffectKind | null,
+  noFnxKey: boolean,
 ): string {
   if (mode === 'lighting') {
     if (lighting.kind !== 'custom') {
-      return 'The keyboard is playing its own lighting modes (see below for what they are and how to switch them). Choose Custom modes to make your own.'
+      return 'The keyboard is playing its own lighting modes (see below for what they are and how to switch them). Choose Custom modes to make your own. Lighting is shared by all keyboard layers.'
     }
     if (!slotKind) return 'Add a mode to get started. With no custom modes, the keyboard goes back to its built-in ones.'
     if (slotKind !== 'paint') {
-      return 'Preview of the selected mode. After applying, press Fn + ] on the keyboard to step through your modes.'
+      return 'Preview of the selected mode. After applying, press Fn + ] on the keyboard to step through your modes (on any keyboard layer).'
     }
     if (tool === 'pick') return 'Click a key to use its color.'
     if (tool === 'erase') return 'Click or drag across keys to turn their lights off.'
     return 'Pick a color, then click or drag across keys to paint them.'
   }
   if (testing) return 'Press each key on your SK64 to light it up here. To test Fn, hold it and press 1. Fn on its own doesn’t send anything to the computer.'
+  const info = boardLayerInfo(board)
+  if (board === 'fnx') {
+    const start = noFnxKey
+      ? 'No key holds the FNX layer yet: on the Windows or macOS tab, set a key to “FNX key” (under Special). '
+      : 'The FNX layer is active while you hold an FNX key on the Windows or macOS layer. '
+    return (
+      start +
+      (layer === 'normal'
+        ? 'Click a key to set what FNX + that key does. Grey keys keep their built-in function, which isn’t documented.'
+        : 'What keys do while both FNX and Fn are held. Grey keys keep their built-in function, which isn’t documented.')
+    )
+  }
+  const where = board === 'base' ? '' : ` on the ${info.name} layer (${info.reach} on the keyboard)`
   return layer === 'normal'
-    ? 'Click a key to change what it does.'
-    : 'What keys do while Fn is held. Grey keys keep the function built into the keyboard.'
+    ? `Click a key to change what it does${where}.`
+    : `What keys do while Fn is held${where}. Grey keys keep the function built into the keyboard.`
 }
 
 /** Keycap legends for the given layer: printed labels, remapped functions, locked Fn. */
-function buildCaps(map: Keymap, layer: LayerName): Record<string, KeyCap> {
+function buildCaps(map: Keymap, layer: LayerName, board: BoardLayer, macros: readonly MacroDef[]): Record<string, KeyCap> {
   const caps: Record<string, KeyCap> = {}
   for (const key of layout.keys) {
     if (key.id === layout.fnKeyId) {
@@ -676,14 +842,20 @@ function buildCaps(map: Keymap, layer: LayerName): Record<string, KeyCap> {
     }
     const override = map[layer][key.id]
     if (override !== undefined) {
-      const d = describe(override)
+      const d = describeWithMacros(override, macros)
       caps[key.id] = { label: d.cap, description: d.name, remapped: true }
       continue
     }
-    const def = defaultValue(key, layer === 'fn')
-    if (layer === 'normal') caps[key.id] = { label: key.label }
-    else if (def !== null) caps[key.id] = { label: describe(def).cap, description: describe(def).name }
-    else caps[key.id] = { label: key.label, unknown: true, description: 'Built-in Fn function' }
+    const def = defaultFunction(key, layer === 'fn', board)
+    if (layer === 'normal' && board !== 'fnx') {
+      // Printed label, unless this layer's default differs (e.g. Option on the macOS layer's Win key).
+      const plain = defaultValue(key, false)
+      caps[key.id] = def && def.value !== plain ? { label: def.cap, description: def.name } : { label: key.label }
+    } else if (def) caps[key.id] = { label: def.cap, description: def.name }
+    else {
+      const description = board === 'fnx' ? 'Built-in FNX function (not documented)' : 'Built-in Fn function'
+      caps[key.id] = { label: key.label, unknown: true, description }
+    }
   }
   return caps
 }

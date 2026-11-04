@@ -15,11 +15,21 @@ import type { KeyDef } from '../keyboard/layout'
 
 type Props = {
   keyDef: KeyDef
+  /** Name of the keyboard layer being edited (Base, Windows…). */
+  boardName: string
   layer: LayerName
   /** The user's override on this layer, or null if the key is at its default. */
   override: number | null
-  /** The key's default function on this layer, if known. */
+  /** The key's default function on this layer, if its key code is known. */
   defaultValue: number | null
+  /** What the key does by default, when known (also when its key code isn't). */
+  defaultName: string | null
+  /** Why an action can't be picked on this layer, or null if it can. */
+  unavailable?: (action: Action) => string | null
+  /** More choices, e.g. the user's macros. */
+  extraActions?: readonly Action[]
+  /** Names values, including extra ones (defaults to the key catalog). */
+  describeValue?: (value: number) => { name: string; cap: string }
   locked: boolean
   onChange: (value: number | null) => void
 }
@@ -34,13 +44,25 @@ const COMBO_MODS: { bit: number; label: string }[] = [
 /** Groups whose actions can be combined with modifiers (e.g. Ctrl+C). */
 const COMBINABLE = new Set<ActionGroup>(['Letters', 'Numbers', 'Symbols', 'Editing', 'Navigation', 'Function keys'])
 
-const LAYER_LABEL: Record<LayerName, string> = { normal: 'Normal layer', fn: 'Fn layer' }
+const LAYER_LABEL: Record<LayerName, string> = { normal: 'Normal', fn: 'Fn layer' }
 
 /**
  * Remapping controls for one key. Mount it with `key={keyId + layer}` so its search and
  * modifier state reset when the selection changes.
  */
-export function RemapPanel({ keyDef, layer, override, defaultValue, locked, onChange }: Props) {
+export function RemapPanel({
+  keyDef,
+  boardName,
+  layer,
+  override,
+  defaultValue,
+  defaultName,
+  unavailable,
+  extraActions,
+  describeValue = describe,
+  locked,
+  onChange,
+}: Props) {
   const current = override ?? defaultValue
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState<ActionGroup | 'All'>('All')
@@ -48,17 +70,17 @@ export function RemapPanel({ keyDef, layer, override, defaultValue, locked, onCh
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return ACTIONS.filter(
+    return [...ACTIONS, ...(extraActions ?? [])].filter(
       (a) =>
         (group === 'All' || a.group === group) &&
         (!q || a.name.toLowerCase().includes(q) || a.cap.toLowerCase() === q || a.keywords?.includes(q)),
     )
-  }, [query, group])
+  }, [query, group, extraActions])
 
   if (locked) {
     return (
       <div className="remap">
-        <RemapHeading keyDef={keyDef} layer={layer} />
+        <RemapHeading keyDef={keyDef} boardName={boardName} layer={layer} />
         <p className="muted">
           Fn switches to the Fn layer inside the keyboard, so it can't be remapped. Use the Fn layer tab to change
           what keys do while Fn is held.
@@ -86,11 +108,14 @@ export function RemapPanel({ keyDef, layer, override, defaultValue, locked, onCh
     }
   }
 
-  const currentText = current === null ? 'Firmware default' : describe(current).name
+  const currentText =
+    override !== null
+      ? describeValue(override).name
+      : (defaultName ?? (current === null ? 'Firmware default' : describeValue(current).name))
 
   return (
     <div className="remap">
-      <RemapHeading keyDef={keyDef} layer={layer} />
+      <RemapHeading keyDef={keyDef} boardName={boardName} layer={layer} />
 
       <div className="remap-current">
         <div>
@@ -147,16 +172,22 @@ export function RemapPanel({ keyDef, layer, override, defaultValue, locked, onCh
       </div>
 
       <div className="remap-results">
-        {results.length === 0 && <p className="muted">No matches.</p>}
+        {results.length === 0 && (
+          <p className="muted">
+            {group === 'Macros' && !query ? 'No macros yet. Make one on the Macros tab.' : 'No matches.'}
+          </p>
+        )}
         {results.map((action) => {
           const value = COMBINABLE.has(action.group) && isKeyValue(action.value) ? makeCombo(action.value, mods) : action.value
+          const reason = unavailable?.(action) ?? null
           return (
             <button
               key={action.value}
               type="button"
               className="action"
               aria-pressed={current === value}
-              title={describe(value).name}
+              title={reason ?? describeValue(value).name}
+              disabled={!!reason}
               onClick={() => pick(action)}
             >
               <span className="action-cap">{action.cap}</span>
@@ -169,10 +200,13 @@ export function RemapPanel({ keyDef, layer, override, defaultValue, locked, onCh
   )
 }
 
-function RemapHeading({ keyDef, layer }: { keyDef: KeyDef; layer: LayerName }) {
+function RemapHeading({ keyDef, boardName, layer }: { keyDef: KeyDef; boardName: string; layer: LayerName }) {
   return (
     <h3 className="remap-title">
-      {keyDef.name} <span className="muted">· {LAYER_LABEL[layer]}</span>
+      {keyDef.name}{' '}
+      <span className="muted">
+        · {boardName} layer · {LAYER_LABEL[layer]}
+      </span>
     </h3>
   )
 }

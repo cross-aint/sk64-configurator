@@ -1120,6 +1120,161 @@ button.icon {
   font-size: 0.85rem;
 }
 
+/* Macro editor */
+
+.macros {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.macro-details {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.macros input[type='text'],
+.macros input[type='number'],
+.macros select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+.macros input:focus-visible,
+.macros select:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.macros input[type='number'] {
+  width: 5.5rem;
+}
+
+.macro-name {
+  width: 16rem;
+  max-width: 100%;
+}
+
+.macro-text {
+  flex: 1 1 14rem;
+}
+
+.macro-count,
+.macro-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+}
+
+.macro-subhead {
+  margin: var(--space-2) 0 0;
+  font-size: 0.95rem;
+}
+
+.macro-adder p {
+  margin: 0 0 var(--space-2);
+  font-size: 0.8rem;
+}
+
+.macro-steps {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.macro-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  font-size: 0.85rem;
+}
+
+.macro-step-number {
+  min-width: 1.6rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.macro-step-action {
+  min-width: 5rem;
+  color: var(--color-text-muted);
+}
+
+.macro-step[data-down] .macro-step-action {
+  color: var(--color-text);
+}
+
+.macro-step kbd {
+  min-width: 3.2rem;
+  text-align: center;
+}
+
+.macro-step-delay {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.macro-step-buttons {
+  display: inline-flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* Macro test: typing box and the keys it received, with timings */
+
+.macro-recorder {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.macro-recorder textarea {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  resize: vertical;
+}
+
+.macro-timeline,
+.hardware-tests .macro-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0;
+  margin-top: var(--space-2);
+  list-style: none;
+  font-size: 0.8rem;
+}
+
+.macro-timeline li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
 /* Mode / reaction list headings */
 
 .list-head {

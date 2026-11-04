@@ -20,6 +20,7 @@ export type ActionGroup =
   | 'Mouse'
   | 'Lighting'
   | 'Numpad'
+  | 'Macros'
   | 'Special'
 
 export type Action = {
@@ -46,6 +47,7 @@ export const ACTION_GROUPS: ActionGroup[] = [
   'Mouse',
   'Lighting',
   'Numpad',
+  'Macros',
   'Special',
 ]
 
@@ -175,6 +177,8 @@ add('Numpad', key(0x63), 'Numpad .', 'N.')
 
 add('Special', DISABLED, 'Disabled', '∅', 'off nothing none block')
 add('Special', 0x0a020002, 'Lock Windows key', 'WinLk', 'toggle game mode')
+// Hold for on-board layer 3, the "FNX" layer (keymap.ts FNX_KEY; GK6X calls it TempSwitchLayer3).
+add('Special', 0x0a070004, 'FNX key (hold for the FNX layer)', 'FNX', 'fnx layer second fn hold')
 
 export const ACTIONS: readonly Action[] = list
 
