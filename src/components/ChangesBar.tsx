@@ -17,11 +17,13 @@ type Props = {
   onResetKeyboard: () => void
   onExport: () => void
   onImport: (text: string) => void
+  /** Opens the picture of the user's remaps and macros. */
+  onPicture: () => void
 }
 
-/** Pending-changes summary with Apply / Discard, factory reset, and profile import/export. */
+/** Pending-changes summary with Apply / Discard, factory reset, profile import/export and a picture. */
 export function ChangesBar(props: Props) {
-  const { pending, blockedReason, applyState, onApply, onDiscard, onResetKeyboard, onExport, onImport } = props
+  const { pending, blockedReason, applyState, onApply, onDiscard, onResetKeyboard, onExport, onImport, onPicture } = props
   const [confirmReset, setConfirmReset] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const writing = applyState.kind === 'writing'
@@ -55,6 +57,7 @@ export function ChangesBar(props: Props) {
       <div className="changes-secondary">
         <button className="link" onClick={onExport} disabled={writing}>Export profile</button>
         <button className="link" onClick={() => fileInput.current?.click()} disabled={writing}>Import profile</button>
+        <button className="link" onClick={onPicture}>Picture of my setup</button>
         <input
           ref={fileInput}
           type="file"

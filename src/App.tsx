@@ -7,7 +7,11 @@ import { EffectList } from './components/EffectList'
 import { EffectSettings } from './components/EffectSettings'
 import { HardwareTests } from './components/HardwareTests'
 import { KeyPressTestPanel } from './components/KeyPressTestPanel'
+import { MacroLimitTestPanel } from './components/MacroLimitTestPanel'
+import { buildMacroLimitTest, MACRO_RECORD_BYTES, macroLimitRows } from './keyboard/macroLimitTest'
 import { MacroEditor } from './components/MacroEditor'
+import { ChangeSheetDialog } from './components/ChangeSheetDialog'
+import { buildChangeSheet } from './keyboard/changeSheet'
 import { useMacros } from './hooks/useMacros'
 import {
   describeWithMacros,
@@ -72,6 +76,11 @@ export default function App() {
   const keymap = useKeymap()
   const lighting = useLighting(layout)
   const macros = useMacros()
+  const [showSheet, setShowSheet] = useState(false)
+  const sheet = useMemo(
+    () => (showSheet ? buildChangeSheet(layout, keymap.draft, macros.draft) : null),
+    [showSheet, keymap.draft, macros.draft],
+  )
   const palette = usePalette()
   const [mode, setMode] = useState<Mode>('keys')
   const [layer, setLayer] = useState<LayerName>('normal')
@@ -95,6 +104,13 @@ export default function App() {
   const setKeyPressDirty = (dirty: boolean) => {
     setKeyPressDirtyState(dirty)
     writeFlag(KEY_PRESS_FLAG, dirty)
+  }
+  const [macroLimitResult, setMacroLimitResult] = useState<string | null>(null)
+  /** The macro limit test is on the Windows layer; Undo, Apply or Reset puts the user's back. */
+  const [macroLimitDirty, setMacroLimitDirtyState] = useState(() => readFlag(MACRO_LIMIT_FLAG))
+  const setMacroLimitDirty = (dirty: boolean) => {
+    setMacroLimitDirtyState(dirty)
+    writeFlag(MACRO_LIMIT_FLAG, dirty)
   }
 
   const boardKeys = keymap.draft[board]
@@ -196,7 +212,7 @@ export default function App() {
   const lightingColors =
     sampled ?? (placing ? {} : mode === 'lighting' && custom ? (paintSlot?.colors ?? previewColors ?? {}) : undefined)
 
-  const pending = describePending(keymap.pendingCount, lighting.changed, macros.changed)
+  const pending = describePending(keymap.pendingCount, lighting.changed, macros.changed, macroLimitDirty)
 
   const blockedReason =
     status.kind !== 'connected'
@@ -269,6 +285,8 @@ export default function App() {
       if (target.keys) keymap.markApplied(target.keys)
       if (target.lighting) lighting.markApplied(target.lighting)
       if (target.macros) macros.markApplied(target.macros)
+      // The macro limit test is gone once the Windows layer's keys and macros are rewritten.
+      if (macroLimitDirty && target.keys?.windows && target.macros !== undefined) setMacroLimitDirty(false)
       const where = finishOn === 'base' ? '' : ` The keyboard is now on the ${boardLayerInfo(finishOn).name} layer.`
       setApplyState({ kind: 'done', message: doneMessage + where })
     } catch (err) {
@@ -282,11 +300,13 @@ export default function App() {
 
   const apply = () => {
     const changed = changedBoardLayers(keymap.draft, keymap.applied)
+    // The macro limit test replaced the Windows layer's keys and every macro; put them back too.
+    if (macroLimitDirty && !changed.includes('windows')) changed.push('windows')
     return write(
       {
         keys: changed.length ? Object.fromEntries(changed.map((id) => [id, keymap.draft[id]])) : undefined,
         lighting: lighting.changed ? lighting.draft : undefined,
-        macros: macros.changed ? macros.draft : undefined,
+        macros: macros.changed || macroLimitDirty ? macros.draft : undefined,
       },
       'Saved to the keyboard.',
     )
@@ -401,6 +421,61 @@ export default function App() {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
       setApplyState({ kind: 'error', message: `Clearing the key links failed: ${reason}` })
+    }
+  }
+
+  // Hardware test: how many macros the keyboard keeps (one per key, on the Windows layer).
+  const macroLimit = useMemo(() => buildMacroLimitTest(layout), [])
+  const runMacroLimitTest = async () => {
+    if (status.kind !== 'connected') return
+    const slots = status.info.bufferSizeA * status.info.bufferSizeB
+    try {
+      setMacroLimitResult(null)
+      setApplyState({ kind: 'writing', step: 'Starting…' })
+      setMacroLimitDirty(true) // set first: a partial write also needs undoing
+      const { macroReplies } = await writeLayer(
+        boardLayerInfo('windows').firmware,
+        { macros: macroLimit.block, keys: { normal: toSlotTable(layout, macroLimit.keys, slots) } },
+        (step) => setApplyState({ kind: 'writing', step }),
+      )
+      const firstOdd = macroReplies.findIndex((s) => s !== macroReplies[0])
+      const where =
+        firstOdd > 0 ? ` That change came in macro ${Math.floor((firstOdd * 56) / MACRO_RECORD_BYTES) + 1}.` : ''
+      setMacroLimitResult(
+        `Wrote ${(macroLimit.block.length / 1024).toFixed(1)} KB. ${describeReplies(macroReplies, 56, 'macro packets')}${where}`,
+      )
+      setApplyState({
+        kind: 'done',
+        message: `${macroLimit.count} test macros written; the keyboard is on the Windows layer. Press keys in the test box.`,
+      })
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      setApplyState({ kind: 'error', message: `Writing the test failed: ${reason}` })
+      setMacroLimitResult(`The write stopped with an error: ${reason}`)
+    }
+  }
+
+  const undoMacroLimitTest = async () => {
+    if (status.kind !== 'connected') return
+    const slots = status.info.bufferSizeA * status.info.bufferSizeB
+    const onStep = (step: string) => setApplyState({ kind: 'writing', step })
+    try {
+      setApplyState({ kind: 'writing', step: 'Starting…' })
+      const own = macros.applied
+      await writeLayer(
+        boardLayerInfo('windows').firmware,
+        {
+          macros: own.length ? encodeMacros(own.map(toFirmwareMacro)) : null,
+          keys: { normal: toSlotTable(layout, keymap.applied.windows.normal, slots) },
+        },
+        onStep,
+      )
+      await writeBaseLayer({}, onStep) // back to the base layer
+      setMacroLimitDirty(false)
+      setApplyState({ kind: 'done', message: 'Macro test removed. Your macros and Windows-layer keys are back.' })
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      setApplyState({ kind: 'error', message: `Removing the macro test failed: ${reason}` })
     }
   }
 
@@ -682,7 +757,9 @@ export default function App() {
             onResetKeyboard={resetKeyboard}
             onExport={exportFile}
             onImport={importFile}
+            onPicture={() => setShowSheet(true)}
           />
+          {sheet && <ChangeSheetDialog layout={layout} sheet={sheet} onClose={() => setShowSheet(false)} />}
         </section>
 
         {mode === 'keys' ? (
@@ -754,6 +831,17 @@ export default function App() {
             onRun={runKeyPressTest}
             onUndo={undoKeyPressTest}
           />
+          <MacroLimitTestPanel
+            count={macroLimit.count}
+            rows={macroLimitRows(layout)}
+            blockedReason={blockedReason}
+            busy={applyState.kind === 'writing'}
+            active={macroLimitDirty}
+            result={macroLimitResult}
+            issuesUrl={ISSUES_URL}
+            onRun={runMacroLimitTest}
+            onUndo={undoMacroLimitTest}
+          />
         </details>
 
         <details className="card developer">
@@ -766,6 +854,7 @@ export default function App() {
 }
 
 const KEY_PRESS_FLAG = 'sk64.keypress.dirty.v1'
+const MACRO_LIMIT_FLAG = 'sk64.macrolimit.dirty.v1'
 function readFlag(key: string): boolean {
   try {
     return localStorage.getItem(key) === '1'
@@ -783,8 +872,15 @@ function writeFlag(key: string, on: boolean) {
   }
 }
 
-function describePending(keyChanges: number, lightingChanged: boolean, macrosChanged: boolean): string | null {
+function describePending(
+  keyChanges: number,
+  lightingChanged: boolean,
+  macrosChanged: boolean,
+  macroLimitTest: boolean,
+): string | null {
   const parts: string[] = []
+  // The macro limit test replaced the Windows layer's keys and the macros; Apply puts them back.
+  if (macroLimitTest) parts.push('your Windows-layer keys and macros (replaced by the macro test)')
   if (keyChanges > 0) parts.push(`${keyChanges} key ${keyChanges === 1 ? 'change' : 'changes'}`)
   if (lightingChanged) parts.push('new lighting')
   if (macrosChanged) parts.push('macro changes')

@@ -17,8 +17,11 @@ import {
 // Windows, macOS and FNX layers link to a macro by its position (key value 0x0A01000n), and each
 // of those layers gets the whole list when it's written. The base layer can't run macros.
 
-/** Most macros the app allows (the keyboard's own limit hasn't been measured). */
-export const MAX_MACROS = 16
+/**
+ * Most macros the app allows. An SK64 (firmware v2.101) kept all 63 in the macro limit test, about
+ * 32 KB per layer; 63 is also the most that test can check (one macro per key).
+ */
+export const MAX_MACROS = 63
 
 export type MacroInput = MacroStep['input']
 
@@ -140,6 +143,13 @@ for (const [usage, plain, shifted] of [
 ] as const) {
   CHARS[plain] = [usage, false]
   CHARS[shifted] = [usage, true]
+}
+
+const CHAR_BY_KEY = new Map(Object.entries(CHARS).map(([ch, [usage, shift]]) => [`${usage}:${shift}`, ch]))
+
+/** The character a key types (US layout), with or without Shift, or null (e.g. arrows, F-keys). */
+export function charFor(usage: number, shift: boolean): string | null {
+  return CHAR_BY_KEY.get(`${usage}:${shift}`) ?? null
 }
 
 /**
