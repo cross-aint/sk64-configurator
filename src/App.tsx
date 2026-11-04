@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import './App.css'
+import { AppHeader, type Page } from './components/AppHeader'
 import { ChangesBar, type ApplyState } from './components/ChangesBar'
-import { ConnectionBar } from './components/ConnectionBar'
+import { Dialog } from './components/Dialog'
+import { WelcomePanel } from './components/WelcomePanel'
 import { DeviceInfo } from './components/DeviceInfo'
 import { EffectList } from './components/EffectList'
 import { EffectSettings } from './components/EffectSettings'
@@ -26,7 +28,9 @@ import { ImageToolbar, type ImageView } from './components/ImageToolbar'
 import { KeyboardView, type KeyCap } from './components/KeyboardView'
 import { LayerTabs } from './components/LayerTabs'
 import { BoardLayerTabs } from './components/BoardLayerTabs'
-import { LightingGuide } from './components/LightingGuide'
+import { ShortcutGuide } from './components/ShortcutGuide'
+import { ChoiceLabel } from './components/controls'
+import type { ActionGroup } from './keyboard/actions'
 import { PacketLog } from './components/PacketLog'
 import { PaintToolbar, type PaintTool } from './components/PaintToolbar'
 import { ReactionList } from './components/ReactionList'
@@ -58,18 +62,23 @@ import {
 } from './keyboard/keymap'
 import { SK64_LAYOUT, type KeyDef } from './keyboard/layout'
 import { baseColors, BUILTIN_LIGHTING, toKeyPressTable, toLightingBlock, type Lighting } from './keyboard/lighting'
-import { MAX_MODES, paintingsOf, slotToEffect, type EffectKind } from './keyboard/presets'
+import { effectName, MAX_MODES, paintingsOf, slotToEffect, type EffectKind } from './keyboard/presets'
 import { buildKeyPressTest } from './keyboard/keyPressTest'
 import { encodeMacros } from './keyboard/macros'
 import { buildLimitTest, describeReplies, keyForCount } from './keyboard/limitTest'
 import { exportProfile, importProfile } from './keyboard/profile'
-import { reactionEffects } from './keyboard/reactions'
-import { LIGHTING_SHORTCUTS, SHORTCUT_SOURCE } from './keyboard/shortcuts'
+import { reactionEffects, reactionTitle } from './keyboard/reactions'
+import { LAYER_SHORTCUTS, LIGHTING_SHORTCUTS, SHORTCUT_SOURCE } from './keyboard/shortcuts'
 
 const layout = SK64_LAYOUT
-const ISSUES_URL = 'https://github.com/4Redcross/sk64-configurator/issues'
+const AUTHOR = 'cross-aint'
+const AUTHOR_URL = `https://github.com/${AUTHOR}`
+const ISSUES_URL = `${AUTHOR_URL}/sk64-configurator/issues`
+/** The hardware tests answered their questions; they stay in the code for new firmware, hidden. */
+const SHOW_HARDWARE_TESTS = false
+const SOURCE_URL = `${AUTHOR_URL}/sk64-configurator`
 
-type Mode = 'keys' | 'lighting' | 'macros'
+type Mode = Page
 
 export default function App() {
   const { status, log, connect, disconnect, readInfo, writeLayer, writeBaseLayer } = useKeyboardConnection()
@@ -91,6 +100,16 @@ export default function App() {
   const [paintColor, setPaintColor] = useState('#00c8ff')
   const [tool, setTool] = useState<PaintTool>('paint')
   const [applyState, setApplyState] = useState<ApplyState>({ kind: 'idle' })
+  const [showReset, setShowReset] = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  /** Which list the Lighting side panel shows when nothing in it is selected. */
+  const [lightList, setLightList] = useState<'modes' | 'reactions'>('modes')
+  const [pickerGroup, setPickerGroup] = useState<ActionGroup | 'All'>('All')
+  const [welcomeDismissed, setWelcomeDismissedState] = useState(() => readFlag(WELCOME_FLAG))
+  const setWelcomeDismissed = (on: boolean) => {
+    setWelcomeDismissedState(on)
+    writeFlag(WELCOME_FLAG, on)
+  }
   const tester = useKeyTester(layout, testing)
   const placement = useImagePlacement(layout)
   const [imageView, setImageView] = useState<ImageView>('picture')
@@ -357,12 +376,6 @@ export default function App() {
 
   const canPaint = mode === 'lighting' && !!paintSlot && !placing
   const paintKey = (key: KeyDef) => lighting.paint([key.id], tool === 'paint' ? paintColor : null)
-  // Eyedropper: take a key's color (an unlit key picks the eraser), then go back to painting.
-  const pickKey = (key: KeyDef) => {
-    const picked = paintSlot?.colors[key.id]
-    if (picked) setPaintColor(picked)
-    setTool(picked ? 'paint' : 'erase')
-  }
 
   // Hardware test: write the most modes the table allows and see how many the keyboard keeps.
   const limitTest = useMemo(() => buildLimitTest(layout, MAX_EFFECTS), [])
@@ -497,362 +510,517 @@ export default function App() {
   }
 
   const selectedOverride = selected ? (boardKeys[layer][selected.id] ?? null) : null
+  const connected = status.kind === 'connected'
+  // First visit, not connected: show how to connect, with the key tester (it needs no connection).
+  const showWelcome = mode === 'keys' && !connected && status.kind !== 'working' && !welcomeDismissed
+  const keyTesting = testing || showWelcome
+  const pendingWhere = joinList(
+    BOARD_LAYERS.filter((l) => keymap.pendingByLayer[l.id] > 0).map((l) => `${l.name} layer (${keymap.pendingByLayer[l.id]})`),
+  )
+  const slotIndex = slot ? lighting.slots.findIndex((s) => s.id === slot.id) : -1
+  const lightingTitle = placing
+    ? 'Place the picture'
+    : !custom
+      ? 'Built-in modes'
+      : reaction
+        ? `Key reaction · ${reactionTitle(reaction)}`
+        : slot
+          ? `Mode ${slotIndex + 1} · ${effectName(slot.kind)}`
+          : 'No modes yet'
+  const listTab = reaction ? 'reactions' : lightList
 
-  const deviceCard = (
-    <section className="card">
-      <div className="card-head">
-        <h2>Device</h2>
-        {status.kind === 'connected' && (
-          <button className="secondary small" onClick={readInfo}>Read again</button>
+  const keyboard = (
+    <KeyboardView
+      layout={layout}
+      caps={mode === 'keys' ? caps : undefined}
+      colors={lightingColors}
+      selectedId={mode === 'keys' && !keyTesting ? selected?.id : null}
+      heldIds={keyTesting ? tester.held : undefined}
+      testedIds={keyTesting ? tester.tested : undefined}
+      markedIds={chosenKeys}
+      onSelect={
+        mode === 'keys'
+          ? keyTesting
+            ? undefined
+            : (key) => setSelected((cur) => (cur?.id === key.id ? null : key))
+          : reaction
+            ? toggleReactionKey
+            : choosingKeys
+              ? toggleChosenKey
+              : undefined
+      }
+      onPaint={canPaint ? paintKey : undefined}
+      overlay={
+        placing && imageView === 'picture' ? (
+          <ImageOverlay
+            layout={layout}
+            src={placing.image.url}
+            aspect={placing.image.height / placing.image.width}
+            transform={placing.transform}
+            onChange={placement.update}
+          />
+        ) : undefined
+      }
+    />
+  )
+
+  const keysTile = (
+    <section className="tile kb-tile" aria-label="Keyboard">
+      <div className="tile-head">
+        <div className="tile-title">
+          <h2>{keyTesting ? 'Test your keys' : `${boardLayerInfo(board).name} layer`}</h2>
+          <p className="muted">{hintText(mode, board, layer, keyTesting, lighting.draft, tool, null, noFnxKey)}</p>
+        </div>
+        {keyTesting ? (
+          <>
+            <span className="tag ok">
+              {tester.tested.size} of {tester.testableCount} keys tested
+            </span>
+            <button type="button" className="ghost small" onClick={tester.reset}>
+              Start over
+            </button>
+          </>
+        ) : (
+          <LayerTabs layer={layer} onChange={setLayer} counts={counts} />
         )}
       </div>
-      {status.kind === 'connected' ? (
-        <DeviceInfo info={status.info} />
-      ) : (
-        <p className="muted">Connect to see your keyboard's model and firmware.</p>
+      {keyboard}
+      {!showWelcome && (
+        <div className="tile-foot">
+          <button
+            type="button"
+            className={testing ? 'small' : 'secondary small'}
+            aria-pressed={testing}
+            onClick={() => setTesting((t) => !t)}
+          >
+            {testing ? 'Stop testing' : 'Test keys'}
+          </button>
+        </div>
       )}
     </section>
   )
 
+  const developerPage = (
+    <div className="stack">
+      <section className="tile">
+        <div className="tile-head">
+          <div className="tile-title">
+            <h2>Device</h2>
+            <p className="muted">What the keyboard reported when it connected.</p>
+          </div>
+          {connected && (
+            <button type="button" className="secondary small" onClick={readInfo}>
+              Read again
+            </button>
+          )}
+        </div>
+        {status.kind === 'connected' ? (
+          <DeviceInfo info={status.info} />
+        ) : (
+          <p className="muted">Connect to see your keyboard's model and firmware.</p>
+        )}
+      </section>
+      {SHOW_HARDWARE_TESTS && (
+      <section className="tile">
+        <div className="tile-title">
+          <h2>Hardware tests</h2>
+          <p className="muted">For contributors: questions only a real keyboard can answer.</p>
+        </div>
+        <HardwareTests
+          count={MAX_EFFECTS}
+          landmarks={limitLandmarks}
+          blockedReason={blockedReason}
+          busy={applyState.kind === 'writing'}
+          result={limitResult}
+          issuesUrl={ISSUES_URL}
+          onRun={runLimitTest}
+        />
+        <KeyPressTestPanel
+          blockedReason={blockedReason}
+          busy={applyState.kind === 'writing'}
+          active={keyPressDirty}
+          result={keyPressResult}
+          issuesUrl={ISSUES_URL}
+          onRun={runKeyPressTest}
+          onUndo={undoKeyPressTest}
+        />
+        <MacroLimitTestPanel
+          count={macroLimit.count}
+          rows={macroLimitRows(layout)}
+          blockedReason={blockedReason}
+          busy={applyState.kind === 'writing'}
+          active={macroLimitDirty}
+          result={macroLimitResult}
+          issuesUrl={ISSUES_URL}
+          onRun={runMacroLimitTest}
+          onUndo={undoMacroLimitTest}
+        />
+      </section>
+      )}
+      <section className="tile">
+        <div className="tile-title">
+          <h2>Packet log</h2>
+          <p className="muted">Every packet sent to and received from the keyboard, for bug reports.</p>
+        </div>
+        <PacketLog log={log} />
+      </section>
+    </div>
+  )
+
   return (
     <div className="app">
-      <header className="app-header">
-        <div className="brand">
-          <h1>SK64 Configurator</h1>
-          <span className="tag">Unofficial</span>
-        </div>
-        <ConnectionBar status={status} onConnect={connect} onDisconnect={disconnect} />
-      </header>
+      <AppHeader
+        page={mode}
+        onPage={(p) => {
+          setMode(p)
+          if (p !== 'keys') setTesting(false)
+        }}
+        macroCount={macros.draft.length}
+        status={status}
+        onConnect={connect}
+        onDisconnect={disconnect}
+        busy={applyState.kind === 'writing'}
+        resetBlocked={blockedReason}
+        onExport={exportFile}
+        onImport={importFile}
+        onPicture={() => setShowSheet(true)}
+        onReset={() => setShowReset(true)}
+        onShortcuts={() => setShowShortcuts(true)}
+        issuesUrl={ISSUES_URL}
+        sourceUrl={SOURCE_URL}
+      />
 
       <main className="app-main">
-        {status.kind === 'unsupported' && (
+        {status.kind === 'unsupported' && !showWelcome && (
           <div className="notice" data-tone="bad">
-            <b>This browser can't talk to USB keyboards.</b> Open this page in desktop Chrome or Edge.
-          </div>
-        )}
-        {status.kind === 'disconnected' && (
-          <div className="notice">
-            Close the official Skyloong software, then click <b>Connect</b> and pick your keyboard. You can plan
-            changes and test keys without connecting.
+            <b>This browser can't talk to USB keyboards.</b> Open this page in Chrome or Edge on a computer.
           </div>
         )}
         {status.kind === 'working' && <div className="notice">{status.message}</div>}
         {status.kind === 'error' && (
           <div className="notice" data-tone="bad">
-            <b>Something went wrong.</b> {status.message} The packet log at the bottom shows what was sent and received.
+            <b>Something went wrong.</b> {status.message} The packet log on the Developer page shows what was sent and
+            received.
           </div>
         )}
 
-        <section className="card">
-          <div className="card-head">
-            <div className="card-title-row">
-              <div className="segmented" role="tablist" aria-label="What to edit">
-                <button type="button" role="tab" aria-selected={mode === 'keys'} onClick={() => setMode('keys')}>
-                  Keys
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === 'lighting'}
-                  onClick={() => {
-                    setMode('lighting')
-                    setTesting(false)
-                  }}
-                >
-                  Lighting
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === 'macros'}
-                  onClick={() => {
-                    setMode('macros')
-                    setTesting(false)
-                  }}
-                >
-                  Macros
-                  {macros.draft.length > 0 && <span className="count">{macros.draft.length}</span>}
-                </button>
-              </div>
-              {mode === 'keys' && <BoardLayerTabs board={board} onChange={setBoard} counts={boardCounts} />}
-              {mode === 'keys' && <LayerTabs layer={layer} onChange={setLayer} counts={counts} />}
-              {mode === 'lighting' && (
-                <div className="segmented" role="radiogroup" aria-label="Lighting">
-                  <button type="button" role="radio" aria-checked={!custom} onClick={lighting.setBuiltin}>
-                    Built-in modes
-                  </button>
-                  <button type="button" role="radio" aria-checked={custom} onClick={lighting.setCustom}>
-                    Custom modes
-                  </button>
-                </div>
-              )}
+        {mode === 'keys' &&
+          (showWelcome ? (
+            <div className="workspace">
+              <WelcomePanel
+                unsupported={status.kind === 'unsupported'}
+                connecting={false}
+                onConnect={connect}
+                onPlan={() => setWelcomeDismissed(true)}
+              />
+              {keysTile}
             </div>
-            {mode === 'keys' && (
-              <div className="toolbar">
-                {testing && (
-                  <>
-                    <span className="muted test-count">
-                      {tester.tested.size} / {tester.testableCount} keys pressed
-                    </span>
-                    <button className="secondary small" onClick={tester.reset}>Reset</button>
-                  </>
-                )}
-                <button
-                  className={testing ? 'small' : 'secondary small'}
-                  aria-pressed={testing}
-                  onClick={() => setTesting((t) => !t)}
-                >
-                  {testing ? 'Stop key test' : 'Test keys'}
+          ) : (
+            <>
+              <BoardLayerTabs board={board} onChange={setBoard} counts={boardCounts} />
+              <div className="workspace">
+                {keysTile}
+                <section className="tile side" aria-label="Selected key">
+                  {selected && !testing ? (
+                    <RemapPanel
+                      key={selected.id + board + layer}
+                      keyDef={selected}
+                      boardName={boardLayerInfo(board).name}
+                      layer={layer}
+                      override={selectedOverride}
+                      defaultValue={defaultValue(selected, layer === 'fn', board)}
+                      defaultName={defaultFunction(selected, layer === 'fn', board)?.name ?? null}
+                      unavailable={(action) =>
+                        action.value === FNX_KEY && !boardLayerInfo(board).fnxKeys
+                          ? 'FNX keys go on the Windows or macOS layer'
+                          : action.group === 'Macros' && !boardLayerInfo(board).macros
+                            ? 'The base layer can’t run macros: use the Windows, macOS or FNX layer'
+                            : null
+                      }
+                      extraActions={pickerMacros}
+                      describeValue={(value) => describeWithMacros(value, macros.draft)}
+                      locked={selected.id === layout.fnKeyId}
+                      onChange={(value) => keymap.setKey(board, layer, selected.id, value)}
+                      group={pickerGroup}
+                      onGroup={setPickerGroup}
+                    />
+                  ) : (
+                    <div className="empty-state">
+                      <h2>Selected key</h2>
+                      <p className="muted">
+                        {testing
+                          ? 'Stop testing to change what keys do.'
+                          : 'Click a key on the keyboard to change what it does on this layer.'}
+                      </p>
+                    </div>
+                  )}
+                </section>
+              </div>
+            </>
+          ))}
+
+        {mode === 'lighting' && (
+          <>
+            <div className="page-toolbar">
+              <div className="segmented" role="radiogroup" aria-label="Lighting">
+                <button type="button" role="radio" aria-checked={!custom} onClick={lighting.setBuiltin}>
+                  <ChoiceLabel text="Built-in modes" />
+                </button>
+                <button type="button" role="radio" aria-checked={custom} onClick={lighting.setCustom}>
+                  <ChoiceLabel text="Custom modes" />
                 </button>
               </div>
-            )}
-          </div>
-          {placing && (
-            <ImageToolbar
-              name={placing.image.name}
-              transform={placing.transform}
-              fitScale={coverTransform(layout, placing.image.width, placing.image.height).scale}
-              view={imageView}
-              onViewChange={setImageView}
-              onChange={placement.update}
-              onFit={placement.fit}
-              onCancel={placement.close}
-              onConfirm={confirmImage}
-            />
-          )}
-          {mode === 'lighting' && !placing && custom && (
-            <EffectList
-              layout={layout}
-              slots={lighting.slots}
-              selectedId={slot?.id ?? null}
-              used={lighting.used}
-              hasReactions={lighting.reactions.length > 0}
-              onSelect={lighting.select}
-              onAdd={(kind: EffectKind) => lighting.addSlot(kind)}
-              onMove={lighting.moveSlot}
-              onRemove={lighting.removeSlot}
-            />
-          )}
-          {mode === 'lighting' && !placing && custom && (
-            <ReactionList
-              layout={layout}
-              reactions={lighting.reactions}
-              selectedId={reaction?.id ?? null}
-              addBlocked={
-                lighting.slots.length === 0
-                  ? 'Add a mode first: the keyboard shows mode 1 between reactions.'
-                  : lighting.used >= MAX_EFFECTS
-                    ? `The keyboard’s ${MAX_EFFECTS} slots are all in use. Remove a mode or a reaction key first.`
-                    : null
-              }
-              slotsLeft={Math.max(0, MAX_EFFECTS - lighting.used)}
-              onSelect={(id) => {
-                lighting.select(id)
-                setReactionNotice(null)
-              }}
-              onAdd={lighting.addReaction}
-              onRemove={lighting.removeReaction}
-            />
-          )}
-          {mode === 'lighting' && !placing && reaction && (
-            <ReactionSettings
-              layout={layout}
-              reaction={reaction}
-              notice={reactionNotice}
-              hasPaintedBase={baseColors(lighting.draft) !== null}
-              onChange={(change) => lighting.updateReaction(reaction.id, change)}
-            />
-          )}
-          {mode === 'lighting' && !placing && paintSlot && (
-            <PaintToolbar
-              colors={paintSlot.colors}
-              keyCount={layout.keys.length}
-              color={paintColor}
-              tool={tool}
-              palette={palette.palette}
-              onColorChange={setPaintColor}
-              onToolChange={setTool}
-              onSwatchChange={palette.setSwatch}
-              onAddCustom={palette.addCustom}
-              onRestoreDefaults={palette.restoreDefaults}
-              onFillAll={() => lighting.paint(layout.keys.map((k) => k.id), paintColor)}
-              onClearAll={() => lighting.paint(layout.keys.map((k) => k.id), null)}
-              onImportImage={importImage}
-            />
-          )}
-          {mode === 'lighting' && !placing && slot && slot.kind !== 'paint' && (
-            <EffectSettings
-              layout={layout}
-              slot={slot}
-              paintings={paintingOptions}
-              choosingKeys={choosingKeys}
-              onChoosingKeysChange={(choosing) => setChoosingFor(choosing ? slot.id : null)}
-              onChange={(change) => lighting.updateSlot(slot.id, change)}
-            />
-          )}
-          {mode === 'macros' && (
-            <MacroEditor
-              layout={layout}
-              macros={macros.draft}
-              selected={macros.selected}
-              full={macros.full}
-              links={macroLinks}
-              onSelect={macros.select}
-              onAdd={() => macros.add()}
-              onUpdate={macros.update}
-              onRemove={removeMacro}
-            />
-          )}
-          {mode !== 'macros' && (
-            <>
-              <p className="muted hint">
-                {placing
-                  ? imageView === 'picture'
-                    ? 'Drag to move the picture, scroll or pinch to zoom, Shift + scroll to rotate. Each key takes the average color inside its outline; keys outside the picture turn off.'
-                    : 'This is how the keys will light up. Switch back to Picture to adjust, or click Use these colors.'
-                  : reaction
-                    ? `Preview of the reaction${reaction.keys.length ? '' : ' (on G until you choose keys)'}. Click keys to choose which ones trigger it.`
-                    : hintText(mode, board, layer, testing, lighting.draft, tool, slot?.kind ?? null, noFnxKey)}
-              </p>
-              <KeyboardView
-                layout={layout}
-                caps={mode === 'keys' ? caps : undefined}
-                colors={lightingColors}
-                selectedId={mode === 'keys' ? selected?.id : null}
-                heldIds={testing ? tester.held : undefined}
-                testedIds={testing ? tester.tested : undefined}
-                markedIds={chosenKeys}
-                onSelect={
-                  mode === 'keys'
-                    ? (key) => setSelected((cur) => (cur?.id === key.id ? null : key))
-                    : reaction
-                      ? toggleReactionKey
-                      : choosingKeys
-                        ? toggleChosenKey
-                      : canPaint && tool === 'pick'
-                        ? pickKey
-                        : undefined
-                }
-                onPaint={canPaint && tool !== 'pick' ? paintKey : undefined}
-                overlay={
-                  placing && imageView === 'picture' ? (
-                    <ImageOverlay
-                      layout={layout}
-                      src={placing.image.url}
-                      aspect={placing.image.height / placing.image.width}
-                      transform={placing.transform}
-                      onChange={placement.update}
-                    />
-                  ) : undefined
-                }
-              />
-            </>
-          )}
-          <ChangesBar
-            pending={pending}
-            blockedReason={blockedReason}
-            applyState={applyState}
-            onApply={apply}
-            onDiscard={discard}
-            onResetKeyboard={resetKeyboard}
-            onExport={exportFile}
-            onImport={importFile}
-            onPicture={() => setShowSheet(true)}
-          />
-          {sheet && <ChangeSheetDialog layout={layout} sheet={sheet} onClose={() => setShowSheet(false)} />}
-        </section>
+              <p className="muted">Lighting is shared by every keyboard layer.</p>
+              <button type="button" className="ghost small" onClick={() => setShowShortcuts(true)}>
+                Built-in shortcuts
+              </button>
+            </div>
+            <div className="workspace">
+              <section className="tile kb-tile" aria-label="Lighting">
+                <div className="tile-head">
+                  <div className="tile-title">
+                    <h2>{lightingTitle}</h2>
+                    <p className="muted">
+                      {placing
+                        ? imageView === 'picture'
+                          ? 'Drag to move the picture, scroll or pinch to zoom, Shift + scroll to rotate. Each key takes the average color inside its outline; keys outside the picture turn off.'
+                          : 'This is how the keys will light up. Switch back to Picture to adjust, or click Use these colors.'
+                        : reaction
+                          ? `Preview of the reaction${reaction.keys.length ? '' : ' (on G until you choose keys)'}. Click keys to choose which ones trigger it.`
+                          : hintText(mode, board, layer, false, lighting.draft, tool, slot?.kind ?? null, noFnxKey)}
+                    </p>
+                  </div>
+                </div>
+                {placing && (
+                  <ImageToolbar
+                    name={placing.image.name}
+                    transform={placing.transform}
+                    fitScale={coverTransform(layout, placing.image.width, placing.image.height).scale}
+                    view={imageView}
+                    onViewChange={setImageView}
+                    onChange={placement.update}
+                    onFit={placement.fit}
+                    onCancel={placement.close}
+                    onConfirm={confirmImage}
+                  />
+                )}
+                {!placing && reaction && (
+                  <ReactionSettings
+                    layout={layout}
+                    reaction={reaction}
+                    notice={reactionNotice}
+                    hasPaintedBase={baseColors(lighting.draft) !== null}
+                    onChange={(change) => lighting.updateReaction(reaction.id, change)}
+                  />
+                )}
+                {!placing && paintSlot && (
+                  <PaintToolbar
+                    colors={paintSlot.colors}
+                    keyCount={layout.keys.length}
+                    color={paintColor}
+                    tool={tool}
+                    palette={palette.palette}
+                    onColorChange={setPaintColor}
+                    onToolChange={setTool}
+                    onSwatchChange={palette.setSwatch}
+                    onAddCustom={palette.addCustom}
+                    onResetPalette={palette.reset}
+                    onFillAll={() => lighting.paint(layout.keys.map((k) => k.id), paintColor)}
+                    onClearAll={() => lighting.paint(layout.keys.map((k) => k.id), null)}
+                    onImportImage={importImage}
+                  />
+                )}
+                {!placing && slot && slot.kind !== 'paint' && (
+                  <EffectSettings
+                    layout={layout}
+                    slot={slot}
+                    paintings={paintingOptions}
+                    choosingKeys={choosingKeys}
+                    onChoosingKeysChange={(choosing) => setChoosingFor(choosing ? slot.id : null)}
+                    onChange={(change) => lighting.updateSlot(slot.id, change)}
+                  />
+                )}
+                {keyboard}
+              </section>
 
-        {mode === 'keys' ? (
-          <div className="columns">
-            <section className="card">
-              <h2>Selected key</h2>
-              {selected ? (
-                <RemapPanel
-                  key={selected.id + board + layer}
-                  keyDef={selected}
-                  boardName={boardLayerInfo(board).name}
-                  layer={layer}
-                  override={selectedOverride}
-                  defaultValue={defaultValue(selected, layer === 'fn', board)}
-                  defaultName={defaultFunction(selected, layer === 'fn', board)?.name ?? null}
-                  unavailable={(action) =>
-                    action.value === FNX_KEY && !boardLayerInfo(board).fnxKeys
-                      ? 'FNX keys go on the Windows or macOS layer'
-                      : action.group === 'Macros' && !boardLayerInfo(board).macros
-                        ? 'The base layer can’t run macros: use the Windows, macOS or FNX layer'
-                        : null
-                  }
-                  extraActions={pickerMacros}
-                  describeValue={(value) => describeWithMacros(value, macros.draft)}
-                  locked={selected.id === layout.fnKeyId}
-                  onChange={(value) => keymap.setKey(board, layer, selected.id, value)}
-                />
-              ) : (
-                <p className="muted">Click a key on the keyboard to change what it does.</p>
-              )}
-            </section>
-            {deviceCard}
-          </div>
-        ) : mode === 'macros' ? (
-          deviceCard
-        ) : (
-          <>
-            <section className="card">
-              <h2>Modes and shortcuts</h2>
-              <LightingGuide
-                layout={layout}
-                shortcuts={LIGHTING_SHORTCUTS}
-                source={SHORTCUT_SOURCE}
-                issuesUrl={ISSUES_URL}
-                maxCustomModes={MAX_MODES}
-              />
-            </section>
-            {deviceCard}
+              <section className="tile side" aria-label="Modes and key reactions">
+                {custom ? (
+                  <>
+                    <div className="line-tabs" role="tablist" aria-label="Lighting lists">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={listTab === 'modes'}
+                        onClick={() => {
+                          setLightList('modes')
+                          if (lighting.slots[0]) lighting.select(lighting.slots[0].id)
+                        }}
+                      >
+                        <ChoiceLabel text="Modes" />
+                        {lighting.slots.length > 0 && <span className="tag count">{lighting.slots.length}</span>}
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={listTab === 'reactions'}
+                        onClick={() => {
+                          setLightList('reactions')
+                          if (lighting.reactions[0]) lighting.select(lighting.reactions[0].id)
+                        }}
+                      >
+                        <ChoiceLabel text="Key reactions" />
+                        {lighting.reactions.length > 0 && <span className="tag count">{lighting.reactions.length}</span>}
+                      </button>
+                    </div>
+                    {listTab === 'modes' ? (
+                      <EffectList
+                        layout={layout}
+                        slots={lighting.slots}
+                        selectedId={slot?.id ?? null}
+                        used={lighting.used}
+                        hasReactions={lighting.reactions.length > 0}
+                        onSelect={lighting.select}
+                        onAdd={(kind: EffectKind) => lighting.addSlot(kind)}
+                        onMove={lighting.moveSlot}
+                        onRemove={lighting.removeSlot}
+                      />
+                    ) : (
+                      <ReactionList
+                        layout={layout}
+                        reactions={lighting.reactions}
+                        selectedId={reaction?.id ?? null}
+                        addBlocked={
+                          lighting.slots.length === 0
+                            ? 'Add a mode first: the keyboard shows mode 1 between reactions.'
+                            : lighting.used >= MAX_EFFECTS
+                              ? `The keyboard’s ${MAX_EFFECTS} slots are all in use. Remove a mode or a reaction key first.`
+                              : null
+                        }
+                        slotsLeft={Math.max(0, MAX_EFFECTS - lighting.used)}
+                        onSelect={(id) => {
+                          lighting.select(id)
+                          setReactionNotice(null)
+                        }}
+                        onAdd={(kind) => {
+                          setLightList('reactions')
+                          lighting.addReaction(kind)
+                        }}
+                        onRemove={lighting.removeReaction}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <div className="empty-state">
+                    <h2>Built-in modes</h2>
+                    <p className="muted">
+                      The keyboard plays its own lighting modes. Fn + ] and Fn + [ step through them, and the arrows change
+                      brightness and speed. Choose Custom modes to make your own.
+                    </p>
+                    <button type="button" className="secondary small" onClick={() => setShowShortcuts(true)}>
+                      See what they do
+                    </button>
+                  </div>
+                )}
+                <div className="inset shortcuts-mini">
+                  <b>On the keyboard</b>
+                  <span><kbd>Fn + ]</kbd> Next custom mode</span>
+                  <span><kbd>Fn + [</kbd> Next built-in mode</span>
+                  <span><kbd>Fn + ↑ ↓</kbd> Brightness</span>
+                  <span><kbd>Fn + ← →</kbd> Animation speed</span>
+                </div>
+              </section>
+            </div>
           </>
         )}
 
-        <details className="card developer">
-          <summary>Hardware tests (for contributors)</summary>
-          <HardwareTests
-            count={MAX_EFFECTS}
-            landmarks={limitLandmarks}
-            blockedReason={blockedReason}
-            busy={applyState.kind === 'writing'}
-            result={limitResult}
-            issuesUrl={ISSUES_URL}
-            onRun={runLimitTest}
+        {mode === 'macros' && (
+          <MacroEditor
+            layout={layout}
+            macros={macros.draft}
+            selected={macros.selected}
+            full={macros.full}
+            links={macroLinks}
+            onSelect={macros.select}
+            onAdd={() => macros.add()}
+            onUpdate={macros.update}
+            onRemove={removeMacro}
           />
-          <KeyPressTestPanel
-            blockedReason={blockedReason}
-            busy={applyState.kind === 'writing'}
-            active={keyPressDirty}
-            result={keyPressResult}
-            issuesUrl={ISSUES_URL}
-            onRun={runKeyPressTest}
-            onUndo={undoKeyPressTest}
-          />
-          <MacroLimitTestPanel
-            count={macroLimit.count}
-            rows={macroLimitRows(layout)}
-            blockedReason={blockedReason}
-            busy={applyState.kind === 'writing'}
-            active={macroLimitDirty}
-            result={macroLimitResult}
-            issuesUrl={ISSUES_URL}
-            onRun={runMacroLimitTest}
-            onUndo={undoMacroLimitTest}
-          />
-        </details>
+        )}
 
-        <details className="card developer">
-          <summary>Packet log (for troubleshooting)</summary>
-          <PacketLog log={log} />
-        </details>
+        {mode === 'developer' && developerPage}
+
+        <footer className="app-footer">
+          Crafted and designed by{' '}
+          <a href={AUTHOR_URL} target="_blank" rel="noreferrer">
+            {AUTHOR}
+          </a>
+        </footer>
       </main>
+
+      <ChangesBar
+        pending={pending}
+        where={pendingWhere}
+        blockedReason={blockedReason}
+        applyState={applyState}
+        onApply={apply}
+        onDiscard={discard}
+        onDismiss={() => setApplyState({ kind: 'idle' })}
+      />
+
+      {sheet && <ChangeSheetDialog layout={layout} sheet={sheet} author={AUTHOR} onClose={() => setShowSheet(false)} />}
+      {showReset && (
+        <Dialog
+          title="Reset keyboard to defaults?"
+          size="narrow"
+          onClose={() => setShowReset(false)}
+          footer={
+            <>
+              <button type="button" className="neutral" onClick={() => setShowReset(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger"
+                onClick={() => {
+                  setShowReset(false)
+                  void resetKeyboard()
+                }}
+              >
+                Yes, reset
+              </button>
+            </>
+          }
+        >
+          <p>
+            Every key on every layer goes back to what it did out of the box, the lighting goes back to the built-in
+            modes, and your macros are cleared from the keyboard and from this page.
+          </p>
+          <p className="muted">Export a profile first if you might want them back.</p>
+        </Dialog>
+      )}
+      {showShortcuts && (
+        <Dialog title="Built-in shortcuts" onClose={() => setShowShortcuts(false)}>
+          <ShortcutGuide
+            layout={layout}
+            layers={LAYER_SHORTCUTS}
+            shortcuts={LIGHTING_SHORTCUTS}
+            source={SHORTCUT_SOURCE}
+            issuesUrl={ISSUES_URL}
+            maxCustomModes={MAX_MODES}
+          />
+        </Dialog>
+      )}
     </div>
   )
 }
 
+/** "a", "a and b", "a, b and c" (null for none). */
+function joinList(parts: string[]): string | null {
+  if (parts.length === 0) return null
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`
+}
+
+const WELCOME_FLAG = 'sk64.welcome.dismissed.v1'
 const KEY_PRESS_FLAG = 'sk64.keypress.dirty.v1'
 const MACRO_LIMIT_FLAG = 'sk64.macrolimit.dirty.v1'
 function readFlag(key: string): boolean {
@@ -905,7 +1073,6 @@ function hintText(
     if (slotKind !== 'paint') {
       return 'Preview of the selected mode. After applying, press Fn + ] on the keyboard to step through your modes (on any keyboard layer).'
     }
-    if (tool === 'pick') return 'Click a key to use its color.'
     if (tool === 'erase') return 'Click or drag across keys to turn their lights off.'
     return 'Pick a color, then click or drag across keys to paint them.'
   }

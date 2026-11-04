@@ -11,7 +11,7 @@ import {
   type MacroDef,
 } from '../keyboard/macroLibrary'
 import { MAX_MACRO_STEPS, MAX_STEP_DELAY_MS, type MacroStep } from '../keyboard/macros'
-import { Segmented, Setting } from './controls'
+import { ChoiceLabel, Segmented, Setting, SettingsHead, SettingsTable } from './controls'
 import { KeyRecorder } from './KeyRecorder'
 
 type Props = {
@@ -47,13 +47,11 @@ export function MacroEditor({ layout, macros, selected, full, links, onSelect, o
   const index = selected ? macros.findIndex((m) => m.id === selected.id) : -1
 
   return (
-    <div className="macros">
-      <div className="effects">
-        <div className="list-head">
-          <span>Macros</span>
-          <span className="muted">
-            Link them to keys on the Windows, macOS or FNX layer. The base layer can’t run macros.
-          </span>
+    <div className="workspace macros">
+      <section className="tile side macro-list" aria-labelledby="macro-list-title">
+        <div className="tile-title">
+          <h2 id="macro-list-title">Macros</h2>
+          <p className="muted">Link them to keys on the Windows, macOS or FNX layer. The base layer can’t run macros.</p>
         </div>
         <ol className="effect-list" aria-label="Macros">
           {macros.map((m, i) => (
@@ -117,11 +115,11 @@ export function MacroEditor({ layout, macros, selected, full, links, onSelect, o
               </button>
             ))}
           <span className="spacer" />
-          <span className="muted">
+          <span className="label">
             {macros.length} of {MAX_MACROS} macros
           </span>
         </div>
-      </div>
+      </section>
 
       {selected ? (
         <MacroDetails
@@ -133,10 +131,13 @@ export function MacroEditor({ layout, macros, selected, full, links, onSelect, o
           onChange={(change) => onUpdate(selected.id, change)}
         />
       ) : (
-        <p className="muted">
-          A macro types a sequence of keys (or clicks mouse buttons) when you press one key. Click{' '}
-          <b>New macro</b> to make one.
-        </p>
+        <section className="tile kb-tile empty-state">
+          <h2>No macro selected</h2>
+          <p className="muted">
+            A macro types a sequence of keys (or clicks mouse buttons) when you press one key. Click <b>New macro</b> to
+            make one.
+          </p>
+        </section>
       )}
     </div>
   )
@@ -156,61 +157,69 @@ function MacroDetails({
   onChange: (change: (m: MacroDef) => MacroDef) => void
 }) {
   const room = MAX_MACRO_STEPS - macro.steps.length
+  const [adder, setAdder] = useState<'record' | 'text' | 'key'>('record')
   const stuck = useMemo(() => unreleased(macro.steps), [macro.steps])
   const setSteps = (steps: MacroStep[]) => onChange((m) => ({ ...m, steps: steps.slice(0, MAX_MACRO_STEPS) }))
   const append = (steps: MacroStep[]) => onChange((m) => ({ ...m, steps: [...m.steps, ...steps].slice(0, MAX_MACRO_STEPS) }))
 
   return (
-    <div className="macro-details">
-      <div className="paint-row paint-colors effect-settings">
-        <Setting label="Name">
-          <input
-            className="macro-name"
-            type="text"
-            maxLength={40}
-            value={macro.name}
-            onChange={(e) => onChange((m) => ({ ...m, name: e.target.value }))}
-            onBlur={() => onChange((m) => ({ ...m, name: m.name.trim() || `Macro ${number}` }))}
-          />
-        </Setting>
-        <Setting label="Plays">
-          <Segmented
-            label="How the macro repeats"
-            options={[
-              { value: 'count', label: 'A set number of times', title: 'Plays this many times per press' },
-              { value: 'whileHeld', label: 'While held', title: 'Repeats while the key is held, stops when you let go' },
-              { value: 'toggle', label: 'Until pressed again', title: 'Repeats until you press the key again' },
-            ]}
-            value={macro.repeat}
-            onChange={(repeat) => onChange((m) => ({ ...m, repeat }))}
-          />
-          {macro.repeat === 'count' && (
-            <label className="macro-count">
-              <input
-                type="number"
-                min={1}
-                max={255}
-                value={macro.count}
-                aria-label="Times to play"
-                onChange={(e) => onChange((m) => ({ ...m, count: Math.min(255, Math.max(1, Number(e.target.value) || 1)) }))}
-              />
-              {macro.count === 1 ? 'time' : 'times'}
-            </label>
+    <section className="tile kb-tile macro-details" aria-label={`Edit macro M${number}`}>
+      <div className="settings-box">
+        <SettingsHead label="Keys">
+          {links.length > 0 ? (
+            <span className="settings-keys">{links.join(', ')}</span>
+          ) : (
+            <span className="muted">
+              Not on any key yet. On the Keys page, pick the Windows, macOS or FNX layer, click a key and choose this
+              macro under Macros.
+            </span>
           )}
-        </Setting>
-        <Setting label="Keys">
-          <span>
-            {links.length > 0
-              ? links.join(', ')
-              : 'None yet. On the Keys tab, choose the Windows, macOS or FNX layer, click a key and pick this macro under Macros.'}
-          </span>
-        </Setting>
+        </SettingsHead>
+        <SettingsTable columns={1}>
+          <Setting label="Name">
+            <input
+              className="macro-name"
+              type="text"
+              maxLength={40}
+              value={macro.name}
+              onChange={(e) => onChange((m) => ({ ...m, name: e.target.value }))}
+              onBlur={() => onChange((m) => ({ ...m, name: m.name.trim() || `Macro ${number}` }))}
+            />
+          </Setting>
+          <Setting label="Plays">
+            <div className="macro-plays">
+              <Segmented
+                label="How the macro repeats"
+                options={[
+                  { value: 'count', label: 'A set number of times', title: 'Plays this many times per press' },
+                  { value: 'whileHeld', label: 'While held', title: 'Repeats while the key is held, stops when you let go' },
+                  { value: 'toggle', label: 'Until pressed again', title: 'Repeats until you press the key again' },
+                ]}
+                value={macro.repeat}
+                onChange={(repeat) => onChange((m) => ({ ...m, repeat }))}
+              />
+              {macro.repeat === 'count' && (
+                <label className="macro-count">
+                  <input
+                    type="number"
+                    min={1}
+                    max={255}
+                    value={macro.count}
+                    aria-label="Times to play"
+                    onChange={(e) => onChange((m) => ({ ...m, count: Math.min(255, Math.max(1, Number(e.target.value) || 1)) }))}
+                  />
+                  {macro.count === 1 ? 'time per press' : 'times per press'}
+                </label>
+              )}
+            </div>
+          </Setting>
+        </SettingsTable>
       </div>
 
       <div className="list-head">
-        <span>Steps</span>
-        <span className="muted">
-          {macro.steps.length} of {MAX_MACRO_STEPS}. Each step presses or releases a key, then waits.
+        <h3>Steps</h3>
+        <span className="label">
+          {macro.steps.length} of {MAX_MACRO_STEPS} · each step presses or releases a key, then waits
         </span>
       </div>
       {macro.steps.length === 0 ? (
@@ -250,17 +259,32 @@ function MacroDetails({
       )}
 
       <h3 className="macro-subhead">Add steps</h3>
-      <Recorder layout={layout} steps={macro.steps} onSteps={setSteps} room={room} />
-      <TextAdder room={room} onAdd={append} />
-      <KeyAdder room={room} onAdd={append} />
+      <div className="line-tabs" role="tablist" aria-label="Add steps by">
+        {(
+          [
+            ['record', 'Record'],
+            ['text', 'Type text'],
+            ['key', 'Add a key'],
+          ] as const
+        ).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={adder === id} onClick={() => setAdder(id)}>
+            <ChoiceLabel text={label} />
+          </button>
+        ))}
+      </div>
+      {adder === 'record' && <Recorder layout={layout} steps={macro.steps} onSteps={setSteps} room={room} />}
+      {adder === 'text' && <TextAdder room={room} onAdd={append} />}
+      {adder === 'key' && <KeyAdder room={room} onAdd={append} />}
 
-      <h3 className="macro-subhead">Try it</h3>
-      <p className="muted">
-        After you click <b>Apply to keyboard</b>, switch the keyboard to a layer where a key runs this macro, click in the
-        box and press that key. Each key the macro types is listed with the time before it.
-      </p>
-      <KeyRecorder label="Typing area for trying a macro" placeholder="Click here, then press the macro’s key" />
-    </div>
+      <div className="inset try-it">
+        <h3>Try it</h3>
+        <p className="muted">
+          After you click <b>Apply to keyboard</b>, switch the keyboard to a layer where a key runs this macro, click in
+          the box and press that key. Each key the macro types is listed with the time before it.
+        </p>
+        <KeyRecorder label="Typing area for trying a macro" placeholder="Click here, then press the macro’s key" />
+      </div>
+    </section>
   )
 }
 

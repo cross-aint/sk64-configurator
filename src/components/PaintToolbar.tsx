@@ -1,8 +1,9 @@
-import { useRef, type CSSProperties } from 'react'
-import { findSwatch, type Palette, type SwatchRef } from '../hooks/usePalette'
+import { useId, useRef, type CSSProperties } from 'react'
+import { findSwatch, isFreshPalette, type Palette, type SwatchRef } from '../hooks/usePalette'
 import { HexInput } from './ColorField'
+import { ChoiceLabel } from './controls'
 
-export type PaintTool = 'paint' | 'erase' | 'pick'
+export type PaintTool = 'paint' | 'erase'
 
 type Props = {
   /** Colors of the painted-colors effect being edited. */
@@ -15,7 +16,8 @@ type Props = {
   onToolChange: (tool: PaintTool) => void
   onSwatchChange: (ref: SwatchRef, color: string | null) => void
   onAddCustom: (color: string) => void
-  onRestoreDefaults: () => void
+  /** Default colors back, custom colors cleared. */
+  onResetPalette: () => void
   onFillAll: () => void
   onClearAll: () => void
   /** A picture file was chosen to color the keys from. */
@@ -31,6 +33,7 @@ type EditTarget = 'current' | SwatchRef
  */
 export function PaintToolbar(props: Props) {
   const { colors, keyCount, color, tool, palette, onColorChange, onToolChange, onSwatchChange } = props
+  const labelId = useId()
   const picker = useRef<HTMLInputElement>(null)
   const imageInput = useRef<HTMLInputElement>(null)
   const editTarget = useRef<EditTarget>('current')
@@ -95,25 +98,18 @@ export function PaintToolbar(props: Props) {
   }
 
   return (
-    <div className="paint">
+    <div className="settings-box paint">
       <div className="paint-row">
-        <div className="segmented" role="radiogroup" aria-label="Tool">
+        <div className="segmented paint-tools" role="radiogroup" aria-label="Tool">
           <button type="button" role="radio" aria-checked={tool === 'paint'} onClick={() => onToolChange('paint')}>
-            Brush
+            <ChoiceLabel text="Brush" />
           </button>
           <button type="button" role="radio" aria-checked={tool === 'erase'} onClick={() => onToolChange('erase')}>
-            Eraser
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={tool === 'pick'}
-            title="Click a key to use its color"
-            onClick={() => onToolChange('pick')}
-          >
-            Pick color
+            <ChoiceLabel text="Eraser" />
           </button>
         </div>
+      </div>
+      <div className="paint-row">
         <div className="paint-actions">
           <button className="secondary small" onClick={props.onFillAll}>Fill all</button>
           <button className="secondary small" onClick={props.onClearAll}>Clear all</button>
@@ -139,18 +135,20 @@ export function PaintToolbar(props: Props) {
 
       <div className="paint-row paint-colors">
         <div className="paint-current" data-erasing={tool === 'erase' || undefined}>
-          <button
-            type="button"
-            className="paint-current-chip"
-            style={{ '--swatch': color } as CSSProperties}
-            aria-label="Choose a color"
-            title="Choose a color"
-            onClick={() => openPicker('current', color)}
-          />
-          <label className="paint-current-text">
-            <span className="muted">{tool === 'erase' ? 'Eraser' : 'Brush color'}</span>
+          <span className="setting-label" id={labelId}>
+            {tool === 'erase' ? 'Eraser' : 'Brush color'}
+          </span>
+          <div className="paint-current-row" role="group" aria-labelledby={labelId}>
+            <button
+              type="button"
+              className="paint-current-chip"
+              style={{ '--swatch': color } as CSSProperties}
+              aria-label="Choose a color"
+              title="Choose a color"
+              onClick={() => openPicker('current', color)}
+            />
             <HexInput color={color} onChange={choose} />
-          </label>
+          </div>
           <input
             ref={picker}
             type="color"
@@ -179,7 +177,18 @@ export function PaintToolbar(props: Props) {
           {match?.row === 'custom' && (
             <button className="link" onClick={() => onSwatchChange(match, null)}>Remove from palette</button>
           )}
-          <button className="link muted-link" onClick={props.onRestoreDefaults}>Restore default colors</button>
+          <button
+            className="link muted-link"
+            disabled={isFreshPalette(palette)}
+            title={
+              isFreshPalette(palette)
+                ? 'The palette already has its default colors'
+                : 'Puts the default colors back and empties your custom colors'
+            }
+            onClick={props.onResetPalette}
+          >
+            Reset palette
+          </button>
         </div>
       </div>
     </div>

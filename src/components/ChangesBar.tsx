@@ -1,5 +1,3 @@
-import { useRef, useState } from 'react'
-
 export type ApplyState =
   | { kind: 'idle' }
   | { kind: 'writing'; step: string }
@@ -9,84 +7,61 @@ export type ApplyState =
 type Props = {
   /** What hasn't been applied yet, e.g. "2 key changes and new lighting", or null if nothing. */
   pending: string | null
+  /** Which keyboard layers the pending key changes are on, e.g. "Windows layer (2) and Base layer (1)". */
+  where: string | null
   /** Why writing is impossible right now (not connected, unknown model…), or null if it's allowed. */
   blockedReason: string | null
   applyState: ApplyState
   onApply: () => void
   onDiscard: () => void
-  onResetKeyboard: () => void
-  onExport: () => void
-  onImport: (text: string) => void
-  /** Opens the picture of the user's remaps and macros. */
-  onPicture: () => void
+  onDismiss: () => void
 }
 
-/** Pending-changes summary with Apply / Discard, factory reset, profile import/export and a picture. */
-export function ChangesBar(props: Props) {
-  const { pending, blockedReason, applyState, onApply, onDiscard, onResetKeyboard, onExport, onImport, onPicture } = props
-  const [confirmReset, setConfirmReset] = useState(false)
-  const fileInput = useRef<HTMLInputElement>(null)
+/**
+ * The bar pinned to the bottom of the window while something isn't on the keyboard yet, or while
+ * writing and right after: what's pending, Discard and Apply to keyboard.
+ */
+export function ChangesBar({ pending, where, blockedReason, applyState, onApply, onDiscard, onDismiss }: Props) {
   const writing = applyState.kind === 'writing'
+  if (!pending && applyState.kind === 'idle') return null
 
-  const summary =
-    applyState.kind === 'writing'
-      ? applyState.step
-      : pending
-        ? `${pending[0].toUpperCase()}${pending.slice(1)} not on the keyboard yet`
-        : 'Keyboard is up to date'
+  const summary = writing
+    ? applyState.step
+    : pending
+      ? `${pending[0].toUpperCase()}${pending.slice(1)} not on the keyboard yet`
+      : 'Keyboard is up to date'
+  const detail =
+    applyState.kind === 'done' ? (
+      <span className="changes-ok">{applyState.message}</span>
+    ) : applyState.kind === 'error' ? (
+      <span className="changes-bad">{applyState.message}</span>
+    ) : writing ? (
+      <span className="label">Keep the keyboard plugged in.</span>
+    ) : blockedReason ? (
+      <span className="label">{blockedReason}</span>
+    ) : (
+      <span className="label">{where ? `${where}. ` : ''}Nothing reaches the keyboard until you apply.</span>
+    )
 
   return (
-    <div className="changes" data-pending={!!pending || undefined}>
-      <div className="changes-main">
-        <div className="changes-text">
-          <strong>{summary}</strong>
-          {blockedReason && !!pending && !writing && <span className="muted">{blockedReason}</span>}
-          {applyState.kind === 'done' && <span className="changes-ok">{applyState.message}</span>}
-          {applyState.kind === 'error' && <span className="changes-bad">{applyState.message}</span>}
-        </div>
-        <div className="changes-actions">
-          <button className="secondary small" onClick={onDiscard} disabled={!pending || writing}>
-            Discard
-          </button>
-          <button className="small" onClick={onApply} disabled={!pending || writing || !!blockedReason}>
-            {writing ? 'Applying…' : 'Apply to keyboard'}
-          </button>
-        </div>
+    <div className="changes" data-pending={!!pending || undefined} role="region" aria-label="Changes" aria-live="polite">
+      <div className="changes-text">
+        <strong>{summary}</strong>
+        {detail}
       </div>
-
-      <div className="changes-secondary">
-        <button className="link" onClick={onExport} disabled={writing}>Export profile</button>
-        <button className="link" onClick={() => fileInput.current?.click()} disabled={writing}>Import profile</button>
-        <button className="link" onClick={onPicture}>Picture of my setup</button>
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".json,application/json"
-          hidden
-          onChange={async (e) => {
-            const file = e.target.files?.[0]
-            e.target.value = ''
-            if (file) onImport(await file.text())
-          }}
-        />
-        <span className="spacer" />
-        {confirmReset ? (
-          <span className="confirm">
-            <span className="muted">Restore every key on the keyboard to factory defaults?</span>
-            <button
-              className="danger small"
-              onClick={() => {
-                setConfirmReset(false)
-                onResetKeyboard()
-              }}
-            >
-              Yes, reset
+      <div className="changes-actions">
+        {pending || writing ? (
+          <>
+            <button type="button" className="neutral" onClick={onDiscard} disabled={!pending || writing}>
+              Discard
             </button>
-            <button className="secondary small" onClick={() => setConfirmReset(false)}>Cancel</button>
-          </span>
+            <button type="button" onClick={onApply} disabled={!pending || writing || !!blockedReason}>
+              {writing ? 'Applying…' : 'Apply to keyboard'}
+            </button>
+          </>
         ) : (
-          <button className="link danger-text" onClick={() => setConfirmReset(true)} disabled={writing || !!blockedReason}>
-            Reset keyboard to defaults
+          <button type="button" className="ghost" onClick={onDismiss}>
+            Dismiss
           </button>
         )}
       </div>

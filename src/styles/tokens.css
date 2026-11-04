@@ -1,112 +1,143 @@
 /*
  * Design tokens. Every color, radius, font and spacing value in the app comes from here,
  * so a design kit can be applied by editing this one file. See DESIGN.md.
+ *
+ * Values follow IBM's open-source Carbon design system: light is its Gray 10 theme, dark its
+ * Gray 100 theme, type is IBM Plex. The design system artifact "SK64 Configurator" holds the same
+ * tokens with a usage note for each.
  */
 
 :root {
-  /* Surfaces */
-  --color-bg: #f4f5f7;
+  /* Surfaces: page, cards (layer 1), insets inside cards (layer 2) */
+  --color-bg: #f4f4f4;
   --color-surface: #ffffff;
-  --color-surface-sunken: #f1f3f5;
-  --color-border: #e2e4e9;
+  --color-surface-sunken: #f4f4f4;
+  --color-layer-hover: #e8e8e8;
+  --color-field: #f4f4f4;
+  --color-border: #e0e0e0;
+  --color-border-strong: #8d8d8d;
 
   /* Text */
-  --color-text: #16181d;
-  --color-text-muted: #5d6370;
+  --color-text: #161616;
+  --color-text-muted: #525252;
+  --color-text-inverse: #ffffff;
 
-  /* Brand / interactive */
-  --color-accent: #3b5bdb;
+  /* Interactive */
+  --color-accent: #0f62fe;
   --color-accent-text: #ffffff;
-  --color-focus: #3b5bdb;
+  --color-link: #0f62fe;
+  --color-focus: #0f62fe;
+  --color-button-secondary: #393939;
+  --color-button-danger: #da1e28;
+  --color-border-inset: #e0e0e0; /* rules inside sunken boxes */
+  --color-button-disabled: #c6c6c6;
+  --color-text-disabled: #8d8d8d;
+  --color-selected-inverse: #161616;
+  --color-tag: #e0e0e0;
 
   /* Status */
-  --color-ok: #2b8a3e;
-  --color-ok-bg: #ebfbee;
-  --color-bad: #c92a2a;
-  --color-bad-bg: #fff5f5;
-  --color-warn: #e67700;
+  --color-ok: #198038;
+  --color-ok-bg: #defbe6;
+  --color-bad: #da1e28;
+  --color-bad-bg: #fff1f1;
+  --color-warn: #8e6a00;
 
   /* Packet log */
-  --color-log-out: #3b5bdb;
-  --color-log-in: #2b8a3e;
+  --color-log-out: #0f62fe;
+  --color-log-in: #198038;
 
   /* Keyboard */
-  --kb-case: #d9dce3;
+  --kb-case: #e0e0e0;
   --kb-key: #ffffff;
-  --kb-key-text: #16181d;
-  --kb-key-mod: #eef0f4; /* modifier / wide keys */
-  --kb-key-border: #c5c9d2;
-  --kb-key-hover: #f3f5ff;
-  --kb-key-selected: #3b5bdb;
+  --kb-key-text: #161616;
+  --kb-key-mod: #f4f4f4; /* modifier / wide keys */
+  --kb-key-border: #c6c6c6;
+  --kb-key-hover: #e8e8e8;
+  --kb-key-selected: #0f62fe;
   --kb-key-selected-text: #ffffff;
-  --kb-key-held: #ffd43b;
-  --kb-key-held-text: #16181d;
-  --kb-key-tested: #d3f9d8;
-  --kb-key-remapped: #3b5bdb;
-  --kb-key-remapped-text: #2f4ac0;
-  --kb-key-off: #c9ccd4; /* lighting mode: LED off */
+  --kb-key-held: #f1c21b;
+  --kb-key-held-text: #161616;
+  --kb-key-tested: #defbe6;
+  --kb-key-remapped: #0f62fe;
+  --kb-key-remapped-text: #0043ce;
+  --kb-key-off: #c6c6c6; /* lighting mode: LED off */
   --kb-key-lit-text: #ffffff;
-  --kb-key-highlight: #fff3bf; /* shortcut map: keys to press */
-  --kb-key-highlight-border: #f59f00;
-  --kb-key-highlight-text: #16181d;
-  --swatch-border: rgb(0 0 0 / 0.2); /* outline around palette colors */
+  --kb-key-highlight: #fcf4d6; /* shortcut map: keys to press */
+  --kb-key-highlight-border: #f1c21b;
+  --kb-key-highlight-text: #161616;
+  --swatch-border: rgb(22 22 22 / 0.2); /* outline around palette colors */
   --kb-image-outline: rgb(255 255 255 / 0.9); /* key outlines over an imported picture */
   --kb-image-outline-shadow: rgb(0 0 0 / 0.9);
-  --kb-gap: 0.3rem;
-  --kb-radius: 6px;
-  --kb-case-radius: 14px;
-  --kb-case-padding: 0.75rem;
-  --kb-font-size: clamp(0.55rem, 1.3vw, 0.8rem);
+  --kb-gap: 4px;
+  --kb-radius: 2px;
+  --kb-case-radius: 4px;
+  --kb-case-padding: 12px;
+  --kb-font-size: clamp(0.6rem, 1.1vw, 0.8rem);
 
-  /* Shape and type */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
+  /* Shape and type: Carbon is square; tags are the one rounded element */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-pill: 24px;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  /* Carbon's 8px grid */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
 
   color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #111317;
-    --color-surface: #1a1d23;
-    --color-surface-sunken: #14161b;
-    --color-border: #2c3039;
-    --color-text: #e8eaee;
-    --color-text-muted: #9aa1ad;
-    --color-accent: #5c7cfa;
-    --color-focus: #91a7ff;
-    --color-ok: #69db7c;
-    --color-ok-bg: #16281b;
-    --color-bad: #ff8787;
-    --color-bad-bg: #2d1717;
-    --color-warn: #ffa94d;
-    --color-log-out: #91a7ff;
-    --color-log-in: #8ce99a;
+    --color-bg: #161616;
+    --color-surface: #262626;
+    --color-surface-sunken: #393939;
+    --color-layer-hover: #333333;
+    --color-field: #393939;
+    --color-border: #393939;
+    --color-border-strong: #6f6f6f;
+    --color-text: #f4f4f4;
+    --color-text-muted: #c6c6c6;
+    --color-text-inverse: #161616;
+    --color-accent: #0f62fe;
+    --color-link: #78a9ff;
+    --color-focus: #ffffff;
+    --color-button-secondary: #6f6f6f;
+    --color-button-danger: #da1e28;
+    --color-border-inset: #525252;
+    --color-button-disabled: #393939;
+    --color-text-disabled: #8d8d8d;
+    --color-selected-inverse: #f4f4f4;
+    --color-tag: #525252;
+    --color-ok: #42be65;
+    --color-ok-bg: #022d0d;
+    --color-bad: #ff8389;
+    --color-bad-bg: #520408;
+    --color-warn: #f1c21b;
+    --color-log-out: #78a9ff;
+    --color-log-in: #42be65;
 
-    --kb-case: #0c0d10;
-    --kb-key: #2a2e37;
-    --kb-key-text: #e8eaee;
-    --kb-key-mod: #22252d;
-    --kb-key-border: #3a3f4a;
-    --kb-key-hover: #333a4d;
-    --kb-key-selected: #5c7cfa;
-    --kb-key-held: #fcc419;
-    --kb-key-tested: #1f3d26;
-    --kb-key-remapped: #91a7ff;
-    --kb-key-remapped-text: #bac8ff;
-    --kb-key-off: #1c1f25;
-    --kb-key-highlight: #3b3015;
-    --kb-key-highlight-border: #fcc419;
-    --kb-key-highlight-text: #ffe8a1;
+    --kb-case: #161616;
+    --kb-key: #393939;
+    --kb-key-text: #f4f4f4;
+    --kb-key-mod: #2e2e2e;
+    --kb-key-border: #525252;
+    --kb-key-hover: #474747;
+    --kb-key-selected: #0f62fe;
+    --kb-key-held: #f1c21b;
+    --kb-key-tested: #044317;
+    --kb-key-remapped: #78a9ff;
+    --kb-key-remapped-text: #a6c8ff;
+    --kb-key-off: #262626;
+    --kb-key-highlight: #302400;
+    --kb-key-highlight-border: #f1c21b;
+    --kb-key-highlight-text: #fddc69;
     --swatch-border: rgb(255 255 255 / 0.25);
   }
 }

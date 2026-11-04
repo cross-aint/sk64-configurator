@@ -10,7 +10,7 @@ import {
   type Speed,
 } from '../keyboard/presets'
 import { ColorField } from './ColorField'
-import { Segmented, Setting } from './controls'
+import { Segmented, Setting, SettingsTable, Slider } from './controls'
 
 type AnimatedSlot = Exclude<EffectSlot, { kind: 'paint' }>
 
@@ -51,199 +51,217 @@ export function EffectSettings({ layout, slot, paintings, choosingKeys, onChoosi
   const set = <S extends AnimatedSlot>(patch: Partial<S>) => onChange((s) => ({ ...s, ...patch }) as EffectSlot)
   const hasPainting = paintings.length > 0
 
-  return (
-    <div className="paint-row paint-colors effect-settings">
-      {slot.kind === 'wave' && (
-        <>
-          <Setting label="Direction">
-            <Segmented
-              label="Direction"
-              options={DIRECTIONS.map((d) => ({ value: d.value, label: d.label, title: d.name, ariaLabel: d.name }))}
-              value={slot.direction}
-              onChange={(direction) => set({ direction })}
-            />
-          </Setting>
-        </>
-      )}
+  const waveOrRain = slot.kind === 'wave' || slot.kind === 'rain'
 
-      {(slot.kind === 'wave' || slot.kind === 'rain') && (
-        <>
-          <LitOrDark
-            label={slot.kind === 'wave' ? 'Bar' : 'Raindrops'}
-            titles={
-              slot.kind === 'wave'
-                ? ['The bar lights keys up', 'Keys stay lit and the bar turns them off']
-                : ['Drops light keys up', 'Keys stay lit and drops turn them off']
-            }
-            dark={slot.dark}
-            onChange={(dark) => set({ dark })}
-          />
-          <Setting label="Colors">
-            <Segmented
-              label="Colors"
-              options={STYLES.map((s) => ({
-                ...s,
-                disabled: s.value === 'painted' && !hasPainting,
-                title: s.value === 'painted' ? (hasPainting ? 'Each key in its painted color' : NO_PAINTING) : undefined,
-              }))}
-              value={slot.style}
-              onChange={(style) => set({ style })}
-            />
-            {(slot.style === 'solid' || slot.style === 'breathing') && (
-              <ColorField label="Mode color" color={slot.color} onChange={(color) => set({ color })} />
-            )}
-          </Setting>
-          <Setting label="Keys">
-            <Segmented
-              label="Keys"
-              options={[
-                { value: 'all', label: 'All keys' },
-                { value: 'chosen', label: 'Chosen keys' },
-              ]}
-              value={slot.keys ? 'chosen' : 'all'}
-              onChange={(v) => {
-                set({ keys: v === 'all' ? null : [] })
-                onChoosingKeysChange(v === 'chosen')
-              }}
-            />
-            {slot.keys && (
-              <>
-                <button
-                  className={choosingKeys ? 'small' : 'secondary small'}
-                  aria-pressed={choosingKeys}
-                  onClick={() => onChoosingKeysChange(!choosingKeys)}
-                >
-                  {choosingKeys ? 'Done choosing' : 'Choose keys'}
-                </button>
-                <span className="muted">{slot.keys.length} keys</span>
-              </>
-            )}
-          </Setting>
-          <Setting label="Other keys">
-            <Segmented
-              label="Other keys"
-              options={[
-                { value: 'off', label: 'Off' },
-                {
-                  value: 'painted',
-                  label: 'Painted',
-                  disabled: !hasPainting,
-                  title: hasPainting ? 'Keys outside the animation stay lit in their painted colors' : NO_PAINTING,
-                },
-              ]}
-              value={slot.background && slot.keys ? 'painted' : 'off'}
-              disabled={!slot.keys}
-              disabledTitle="Choose keys first: with all keys there are no other keys"
-              onChange={(v) => set({ background: v === 'painted' })}
-            />
-          </Setting>
-          {(slot.style === 'painted' || (slot.background && slot.keys)) && (
-            <PaintingPicker paintings={paintings} value={slot.paintFrom} onChange={(paintFrom) => set({ paintFrom })} />
-          )}
-        </>
+  // Wave and rain share these; each lays them out in its own order below.
+  const colorsSetting = waveOrRain && (
+    <Setting label="Colors" span={slot.kind === 'rain' ? 2 : 'all'}>
+      <Segmented
+        label="Colors"
+        options={STYLES.map((s) => ({
+          ...s,
+          disabled: s.value === 'painted' && !hasPainting,
+          title: s.value === 'painted' ? (hasPainting ? 'Each key in its painted color' : NO_PAINTING) : undefined,
+        }))}
+        value={slot.style}
+        onChange={(style) => set({ style })}
+      />
+      {(slot.style === 'solid' || slot.style === 'breathing') && (
+        <ColorField label="Mode color" color={slot.color} onChange={(color) => set({ color })} />
       )}
-
-      {slot.kind === 'wave' && (
+    </Setting>
+  )
+  const keysSetting = waveOrRain && (
+    <Setting label="Keys">
+      <Segmented
+        label="Keys"
+        options={[
+          { value: 'all', label: 'All keys' },
+          { value: 'chosen', label: 'Chosen keys' },
+        ]}
+        value={slot.keys ? 'chosen' : 'all'}
+        onChange={(v) => {
+          set({ keys: v === 'all' ? null : [] })
+          onChoosingKeysChange(v === 'chosen')
+        }}
+      />
+      {slot.keys && (
         <>
-          <Setting label="Thickness">
-            <Segmented
-              label="Thickness in keys"
-              options={[1, 2, 3, 4].map((n) => ({ value: n, label: String(n), title: `${n} key${n > 1 ? 's' : ''}` }))}
-              value={slot.width}
-              onChange={(width) => set({ width })}
-            />
-          </Setting>
-          <Setting label="Sweep time">
-            <input
-              type="range"
-              aria-label="Sweep time in seconds"
-              min={LIMITS.waveSeconds.min}
-              max={LIMITS.waveSeconds.max}
-              step={0.1}
-              value={slot.seconds}
-              onChange={(e) => set({ seconds: Number(e.target.value) })}
-            />
-            <output>{actualSeconds(layout, slot).toFixed(1)} s</output>
-          </Setting>
-        </>
-      )}
-
-      {slot.kind === 'rain' && (
-        <>
-          <Setting label="Amount">
-            <input
-              type="range"
-              aria-label="Drops per second"
-              min={LIMITS.dropsPerSecond.min}
-              max={LIMITS.dropsPerSecond.max}
-              step={1}
-              value={slot.dropsPerSecond}
-              onChange={(e) => set({ dropsPerSecond: Number(e.target.value) })}
-            />
-            <output>{slot.dropsPerSecond}/s</output>
-          </Setting>
-          <Setting label="Fall time">
-            <input
-              type="range"
-              aria-label="Fall time in seconds"
-              min={LIMITS.rainSeconds.min}
-              max={LIMITS.rainSeconds.max}
-              step={0.1}
-              value={slot.seconds}
-              onChange={(e) => set({ seconds: Number(e.target.value) })}
-            />
-            <output>{actualSeconds(layout, slot).toFixed(1)} s</output>
-          </Setting>
           <button
-            className="secondary small"
-            title="Drops fall in a random order that repeats every 4 seconds. This picks a different random order."
-            onClick={() => set({ seed: randomSeed() })}
+            className={choosingKeys ? 'small' : 'secondary small'}
+            aria-pressed={choosingKeys}
+            onClick={() => onChoosingKeysChange(!choosingKeys)}
           >
-            Shuffle drops
+            {choosingKeys ? 'Done choosing' : 'Choose keys'}
           </button>
+          <span className="muted">{slot.keys.length} keys</span>
         </>
       )}
+    </Setting>
+  )
+  const otherKeysSetting = waveOrRain && (
+    <Setting label="Other keys">
+      <Segmented
+        label="Other keys"
+        options={[
+          { value: 'off', label: 'Off' },
+          {
+            value: 'painted',
+            label: 'Painted',
+            disabled: !hasPainting,
+            title: hasPainting ? 'Keys outside the animation stay lit in their painted colors' : NO_PAINTING,
+          },
+        ]}
+        value={slot.background && slot.keys ? 'painted' : 'off'}
+        disabled={!slot.keys}
+        disabledTitle="Choose keys first: with all keys there are no other keys"
+        onChange={(v) => set({ background: v === 'painted' })}
+      />
+    </Setting>
+  )
+  const litOrDark = waveOrRain && (
+    <LitOrDark
+      label={slot.kind === 'wave' ? 'Bar' : 'Raindrops'}
+      titles={
+        slot.kind === 'wave'
+          ? ['The bar lights keys up', 'Keys stay lit and the bar turns them off']
+          : ['Drops light keys up', 'Keys stay lit and drops turn them off']
+      }
+      dark={slot.dark}
+      onChange={(dark) => set({ dark })}
+    />
+  )
 
-      {slot.kind === 'breathing' && (
-        <>
-          <Setting label="Colors">
-            <Segmented
-              label="Colors"
-              options={[
-                { value: 'solid', label: 'One color' },
-                {
-                  value: 'painted',
-                  label: 'Painted',
-                  disabled: !hasPainting,
-                  title: hasPainting ? 'Your painted colors breathe together' : NO_PAINTING,
-                },
-              ]}
-              value={slot.style}
-              onChange={(style) => set({ style })}
-            />
-            {slot.style === 'solid' && (
-              <ColorField label="Breathing color" color={slot.color} onChange={(color) => set({ color })} />
+  return (
+    <div className="settings-box">
+      <SettingsTable columns={3}>
+        {/* Wave: Colors / Keys, Direction, Bar / Other keys, Thickness, Sweep time */}
+        {slot.kind === 'wave' && (
+          <>
+            {colorsSetting}
+            {keysSetting}
+            <Setting label="Direction">
+              <Segmented
+                label="Direction"
+                options={DIRECTIONS.map((d) => ({ value: d.value, label: d.label, title: d.name, ariaLabel: d.name }))}
+                value={slot.direction}
+                onChange={(direction) => set({ direction })}
+              />
+            </Setting>
+            {litOrDark}
+            {otherKeysSetting}
+            <Setting label="Thickness">
+              <Segmented
+                label="Thickness in keys"
+                options={[1, 2, 3, 4].map((n) => ({ value: n, label: String(n), title: `${n} key${n > 1 ? 's' : ''}` }))}
+                value={slot.width}
+                onChange={(width) => set({ width })}
+              />
+            </Setting>
+            <Setting label="Sweep time">
+              <Slider
+                label="Sweep time in seconds"
+                min={LIMITS.waveSeconds.min}
+                max={LIMITS.waveSeconds.max}
+                step={0.1}
+                value={slot.seconds}
+                valueText={`${actualSeconds(layout, slot).toFixed(1)} s`}
+                onChange={(seconds) => set({ seconds })}
+              />
+            </Setting>
+          </>
+        )}
+
+        {/* Rain: Colors, Order / Keys, Amount, Raindrops / Other keys, Fall time */}
+        {slot.kind === 'rain' && (
+          <>
+            {colorsSetting}
+            <Setting label="Order">
+              <button
+                className="secondary small"
+                title="Drops fall in a random order that repeats every 4 seconds. This picks a different random order."
+                onClick={() => set({ seed: randomSeed() })}
+              >
+                Shuffle drops
+              </button>
+            </Setting>
+            {keysSetting}
+            <Setting label="Amount">
+              <Slider
+                label="Drops per second"
+                min={LIMITS.dropsPerSecond.min}
+                max={LIMITS.dropsPerSecond.max}
+                step={1}
+                value={slot.dropsPerSecond}
+                valueText={`${slot.dropsPerSecond}/s`}
+                onChange={(dropsPerSecond) => set({ dropsPerSecond })}
+              />
+            </Setting>
+            {litOrDark}
+            {otherKeysSetting}
+            <Setting label="Fall time">
+              <Slider
+                label="Fall time in seconds"
+                min={LIMITS.rainSeconds.min}
+                max={LIMITS.rainSeconds.max}
+                step={0.1}
+                value={slot.seconds}
+                valueText={`${actualSeconds(layout, slot).toFixed(1)} s`}
+                onChange={(seconds) => set({ seconds })}
+              />
+            </Setting>
+          </>
+        )}
+
+        {waveOrRain && (slot.style === 'painted' || (slot.background && slot.keys)) && (
+          <PaintingPicker paintings={paintings} value={slot.paintFrom} onChange={(paintFrom) => set({ paintFrom })} />
+        )}
+
+        {slot.kind === 'breathing' && (
+          <>
+            <Setting label="Colors">
+              <Segmented
+                label="Colors"
+                options={[
+                  { value: 'solid', label: 'One color' },
+                  {
+                    value: 'painted',
+                    label: 'Painted',
+                    disabled: !hasPainting,
+                    title: hasPainting ? 'Your painted colors breathe together' : NO_PAINTING,
+                  },
+                ]}
+                value={slot.style}
+                onChange={(style) => set({ style })}
+              />
+              {slot.style === 'solid' && (
+                <ColorField label="Breathing color" color={slot.color} onChange={(color) => set({ color })} />
+              )}
+            </Setting>
+            <SpeedSetting speed={slot.speed} onChange={(speed) => set({ speed })} />
+            {slot.style === 'painted' && (
+              <PaintingPicker paintings={paintings} value={slot.paintFrom} onChange={(paintFrom) => set({ paintFrom })} />
             )}
-          </Setting>
-          {slot.style === 'painted' && (
-            <PaintingPicker paintings={paintings} value={slot.paintFrom} onChange={(paintFrom) => set({ paintFrom })} />
-          )}
-          <SpeedSetting speed={slot.speed} onChange={(speed) => set({ speed })} />
-        </>
-      )}
+          </>
+        )}
 
-      {slot.kind === 'rainbow' && <SpeedSetting speed={slot.speed} onChange={(speed) => set({ speed })} />}
+        {slot.kind === 'rainbow' && <SpeedSetting speed={slot.speed} onChange={(speed) => set({ speed })} />}
+      </SettingsTable>
 
-      <p className="muted effect-note">
-        {choosingKeys
-          ? 'Click keys on the keyboard to add or remove them. '
-          : slot.kind === 'rain'
-            ? 'Drops fall in a random order that repeats every 4 seconds; Shuffle drops picks a different one. Times are at the keyboard’s default speed. '
-            : slot.kind === 'wave'
-              ? 'Times are at the keyboard’s default speed. '
-            : 'The preview is approximate: the keyboard’s exact fade and color curves aren’t known. '}
-        <kbd>Fn</kbd> + <kbd>←</kbd> / <kbd>→</kbd> on the keyboard makes all modes slower or faster.
-      </p>
+      <ul className="settings-notes">
+        {choosingKeys && <li>Click keys on the keyboard to add or remove them.</li>}
+        {slot.kind === 'rain' && (
+          <li>Drops fall in a random order that repeats every 4 seconds; Shuffle drops picks a different one.</li>
+        )}
+        {waveOrRain ? (
+          <li>Times are at the keyboard’s default speed.</li>
+        ) : (
+          <li>The preview is approximate: the keyboard’s exact fade and color curves aren’t known.</li>
+        )}
+        <li>
+          <kbd>Fn</kbd> + <kbd>←</kbd> / <kbd>→</kbd> on the keyboard makes all modes slower or faster.
+        </li>
+      </ul>
     </div>
   )
 }

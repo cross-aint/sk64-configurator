@@ -1,4 +1,6 @@
 import { withRotation, withScale, type ImageTransform } from '../keyboard/imageSampling'
+import { ChoiceLabel } from './controls'
+import { rangeFill } from './rangeFill'
 
 export type ImageView = 'picture' | 'result'
 
@@ -22,14 +24,14 @@ export function ImageToolbar(props: Props) {
   const rotation = Math.round(t.rotation)
 
   return (
-    <div className="paint">
+    <div className="settings-box paint">
       <div className="paint-row">
         <div className="segmented" role="radiogroup" aria-label="Show">
           <button type="button" role="radio" aria-checked={view === 'picture'} onClick={() => onViewChange('picture')}>
-            Picture
+            <ChoiceLabel text="Picture" />
           </button>
           <button type="button" role="radio" aria-checked={view === 'result'} onClick={() => onViewChange('result')}>
-            Result
+            <ChoiceLabel text="Result" />
           </button>
         </div>
         <span className="image-name" title={name}>
@@ -57,6 +59,7 @@ export function ImageToolbar(props: Props) {
             min={10}
             max={500}
             value={Math.min(500, Math.max(10, zoom))}
+            style={rangeFill(zoom, 10, 500)}
             onChange={(e) => onChange((cur) => withScale(cur, (fitScale * Number(e.target.value)) / 100))}
           />
           <button
@@ -86,6 +89,7 @@ export function ImageToolbar(props: Props) {
             min={-180}
             max={180}
             value={rotation}
+            style={rangeFill(rotation, -180, 180)}
             onChange={(e) => onChange((cur) => withRotation(cur, Number(e.target.value)))}
           />
           <button

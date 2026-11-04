@@ -39,6 +39,11 @@ function load(): Palette {
   }
 }
 
+/** The palette is as it started: default colors, no custom ones. */
+export function isFreshPalette(palette: Palette): boolean {
+  return palette.colors.every((c, i) => c === DEFAULT_COLORS[i]) && palette.custom.every((c) => c === null)
+}
+
 /** First palette slot holding this color, if any. */
 export function findSwatch(palette: Palette, color: string): SwatchRef | null {
   const c = color.toLowerCase()
@@ -86,7 +91,8 @@ export function usePalette() {
     })
   }, [])
 
-  const restoreDefaults = useCallback(() => setPalette((cur) => ({ ...cur, colors: [...DEFAULT_COLORS] })), [])
+  /** Puts the default colors back and empties the custom slots. */
+  const reset = useCallback(() => setPalette(fresh()), [])
 
-  return { palette, setSwatch, addCustom, restoreDefaults }
+  return { palette, setSwatch, addCustom, reset }
 }

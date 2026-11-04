@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import {
   ACTION_GROUPS,
   ACTIONS,
@@ -32,6 +32,9 @@ type Props = {
   describeValue?: (value: number) => { name: string; cap: string }
   locked: boolean
   onChange: (value: number | null) => void
+  /** The category shown in the list. It belongs to the page, so it stays when another key is picked. */
+  group: ActionGroup | 'All'
+  onGroup: (group: ActionGroup | 'All') => void
 }
 
 const COMBO_MODS: { bit: number; label: string }[] = [
@@ -44,11 +47,11 @@ const COMBO_MODS: { bit: number; label: string }[] = [
 /** Groups whose actions can be combined with modifiers (e.g. Ctrl+C). */
 const COMBINABLE = new Set<ActionGroup>(['Letters', 'Numbers', 'Symbols', 'Editing', 'Navigation', 'Function keys'])
 
-const LAYER_LABEL: Record<LayerName, string> = { normal: 'Normal', fn: 'Fn layer' }
+const LAYER_LABEL: Record<LayerName, string> = { normal: 'Normal', fn: 'Fn held' }
 
 /**
- * Remapping controls for one key. Mount it with `key={keyId + layer}` so its search and
- * modifier state reset when the selection changes.
+ * Remapping controls for one key: what it does now, then a searchable list of everything it can
+ * do. Mount it with `key={keyId + layer}` so its search and modifiers reset with the selection.
  */
 export function RemapPanel({
   keyDef,
@@ -62,28 +65,43 @@ export function RemapPanel({
   describeValue = describe,
   locked,
   onChange,
+  group,
+  onGroup: setGroup,
 }: Props) {
+  const id = useId()
   const current = override ?? defaultValue
   const [query, setQuery] = useState('')
-  const [group, setGroup] = useState<ActionGroup | 'All'>('All')
   const [mods, setMods] = useState(() => (override !== null ? splitCombo(override).mods : 0))
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
     return [...ACTIONS, ...(extraActions ?? [])].filter(
       (a) =>
-        (group === 'All' || a.group === group) &&
+        (q ? true : group === 'All' || a.group === group) &&
         (!q || a.name.toLowerCase().includes(q) || a.cap.toLowerCase() === q || a.keywords?.includes(q)),
     )
   }, [query, group, extraActions])
 
+  const heading = (
+    <div className="remap-head">
+      <p>
+        <b>Selected key</b>
+        <span className="muted">
+          {' '}
+          · {boardName} layer · {LAYER_LABEL[layer]}
+        </span>
+      </p>
+      <h2 className="remap-key">{keyDef.name}</h2>
+    </div>
+  )
+
   if (locked) {
     return (
       <div className="remap">
-        <RemapHeading keyDef={keyDef} boardName={boardName} layer={layer} />
+        {heading}
         <p className="muted">
-          Fn switches to the Fn layer inside the keyboard, so it can't be remapped. Use the Fn layer tab to change
-          what keys do while Fn is held.
+          Fn switches to the Fn layer inside the keyboard, so it can't be remapped. Use Fn held to change what keys do
+          while Fn is held.
         </p>
       </div>
     )
@@ -108,105 +126,101 @@ export function RemapPanel({
     }
   }
 
-  const currentText =
+  const nowText =
     override !== null
       ? describeValue(override).name
       : (defaultName ?? (current === null ? 'Firmware default' : describeValue(current).name))
 
   return (
     <div className="remap">
-      <RemapHeading keyDef={keyDef} boardName={boardName} layer={layer} />
+      {heading}
 
-      <div className="remap-current">
+      <div className="remap-current inset">
         <div>
-          <span className="muted">Currently</span>
-          <strong>{currentText}</strong>
-          <span className="remap-status" data-changed={override !== null || undefined}>
-            {override !== null ? 'Changed' : 'Default'}
-          </span>
+          <div className="label">What it does now</div>
+          <div className="remap-now">{nowText}</div>
         </div>
         {override !== null && (
-          <button className="secondary small" onClick={() => onChange(null)}>
+          <button type="button" className="ghost small" onClick={() => onChange(null)}>
             Reset to default
           </button>
         )}
       </div>
 
-      <div className="remap-mods" role="group" aria-label="Hold modifiers with the key">
-        <span className="muted">Combine with</span>
-        {COMBO_MODS.map((m) => (
-          <button
-            key={m.bit}
-            type="button"
-            className="chip"
-            aria-pressed={(mods & m.bit) !== 0}
-            onClick={() => toggleMod(m.bit)}
-          >
-            {m.label}
-          </button>
-        ))}
+      <div className="field">
+        <label htmlFor={`${id}-q`} className="label">
+          Search keys and functions
+        </label>
+        <input
+          id={`${id}-q`}
+          type="search"
+          placeholder="e.g. Volume up, F13, Ctrl+C"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
       </div>
 
-      <input
-        className="remap-search"
-        type="search"
-        placeholder="Search keys and functions…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        aria-label="Search keys and functions"
-      />
-
-      <div className="remap-groups" role="tablist" aria-label="Categories">
-        {(['All', ...ACTION_GROUPS] as const).map((g) => (
-          <button
-            key={g}
-            type="button"
-            role="tab"
-            className="chip"
-            aria-selected={group === g}
-            onClick={() => setGroup(g)}
+      <div className="remap-filters">
+        <div className="field">
+          <label htmlFor={`${id}-g`} className="label">
+            Category
+          </label>
+          <select
+            id={`${id}-g`}
+            value={group}
+            disabled={!!query.trim()}
+            title={query.trim() ? 'Searching every category' : undefined}
+            onChange={(e) => setGroup(e.target.value as ActionGroup | 'All')}
           >
-            {g}
-          </button>
-        ))}
+            <option value="All">All</option>
+            {ACTION_GROUPS.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
+        </div>
+        <fieldset className="remap-mods">
+          <legend className="label">Hold with it</legend>
+          <div>
+            {COMBO_MODS.map((m) => (
+              <label key={m.bit} className="check">
+                <input type="checkbox" checked={(mods & m.bit) !== 0} onChange={() => toggleMod(m.bit)} />
+                {m.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
       </div>
 
-      <div className="remap-results">
+      <ul className="remap-results" aria-label={query.trim() ? 'Search results' : group}>
         {results.length === 0 && (
-          <p className="muted">
-            {group === 'Macros' && !query ? 'No macros yet. Make one on the Macros tab.' : 'No matches.'}
-          </p>
+          <li className="remap-empty muted">
+            {group === 'Macros' && !query ? 'No macros yet. Make one on the Macros page.' : 'No matches.'}
+          </li>
         )}
         {results.map((action) => {
           const value = COMBINABLE.has(action.group) && isKeyValue(action.value) ? makeCombo(action.value, mods) : action.value
           const reason = unavailable?.(action) ?? null
+          const on = current === value
           return (
-            <button
-              key={action.value}
-              type="button"
-              className="action"
-              aria-pressed={current === value}
-              title={reason ?? describeValue(value).name}
-              disabled={!!reason}
-              onClick={() => pick(action)}
-            >
-              <span className="action-cap">{action.cap}</span>
-              <span className="action-name">{action.name}</span>
-            </button>
+            <li key={action.value}>
+              <button
+                type="button"
+                className="action"
+                aria-pressed={on}
+                title={reason ?? describeValue(value).name}
+                disabled={!!reason}
+                onClick={() => pick(action)}
+              >
+                <kbd className="action-cap">{action.cap}</kbd>
+                <span className="action-name">{action.name}</span>
+                <span className="label">{on ? 'Current' : reason ? 'Not on this layer' : query.trim() ? action.group : ''}</span>
+              </button>
+            </li>
           )
         })}
-      </div>
+      </ul>
     </div>
-  )
-}
-
-function RemapHeading({ keyDef, boardName, layer }: { keyDef: KeyDef; boardName: string; layer: LayerName }) {
-  return (
-    <h3 className="remap-title">
-      {keyDef.name}{' '}
-      <span className="muted">
-        · {boardName} layer · {LAYER_LABEL[layer]}
-      </span>
-    </h3>
   )
 }

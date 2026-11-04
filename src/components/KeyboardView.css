@@ -20,6 +20,10 @@
   height: calc(100% / var(--kb-rows) - var(--kb-gap));
   margin: calc(var(--kb-gap) / 2);
   padding: 0;
+  min-height: 0; /* undo the base button size */
+  line-height: 1.2;
+  letter-spacing: 0;
+  white-space: normal;
   display: grid;
   place-items: center;
   font-size: var(--kb-font-size);

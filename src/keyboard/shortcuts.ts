@@ -28,6 +28,35 @@ export const LIGHTING_SHORTCUTS: readonly Shortcut[] = [
   { keyId: 'left', cap: 'Slow', label: 'Animation speed down' },
 ]
 
+/** How to reach each layer. Skyloong's manual marks them with a number in a hexagon (`mode`). */
+export type LayerShortcut = {
+  mode: 1 | 2 | 3
+  name: string
+  /** Key pressed together with Fn, or null for the FNX layer, which is held. */
+  fnKeyId: string | null
+  /** Short legend drawn on that key in the shortcut map. */
+  cap: string
+  detail: string
+}
+
+export const LAYER_SHORTCUTS: readonly LayerShortcut[] = [
+  { mode: 1, name: 'Windows layer', fnKeyId: 'w', cap: 'Win', detail: 'Switches the keyboard to its Windows layer.' },
+  {
+    mode: 2,
+    name: 'macOS layer',
+    fnKeyId: 'e',
+    cap: 'Mac',
+    detail: 'Switches to the macOS layer, where Win acts as Option and Alt as Command, as printed on the keys.',
+  },
+  {
+    mode: 3,
+    name: 'FNX layer',
+    fnKeyId: null,
+    cap: 'FNX',
+    detail: 'Active while you hold a key set to FNX on the Windows or macOS layer. Hold FNX and Fn for its Fn layer.',
+  },
+]
+
 export const SHORTCUT_SOURCE = {
   name: 'Skyloong’s RGB guide (GK64 chart)',
   url: 'https://skyloong.vip/blogs/news/skyloong-keyboard-rgb-user-guide',

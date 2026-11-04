@@ -1,4 +1,5 @@
 import { BOARD_LAYERS, type BoardLayer } from '../keyboard/keymap'
+import { ChoiceLabel } from './controls'
 
 type Props = {
   board: BoardLayer
@@ -7,10 +8,13 @@ type Props = {
   counts: Record<BoardLayer, number>
 }
 
-/** Switches which keyboard layer (base, or the on-board Fn + W / E / R layers) is shown and edited. */
+/** How to reach each layer, short enough for a tab. */
+const HINTS: Record<BoardLayer, string> = { base: '', windows: 'Fn + W', mac: 'Fn + E', fnx: 'hold FNX' }
+
+/** Line tabs for the keyboard layer being edited (base, or the on-board Fn + W / E and FNX layers). */
 export function BoardLayerTabs({ board, onChange, counts }: Props) {
   return (
-    <div className="segmented" role="tablist" aria-label="Keyboard layer">
+    <div className="line-tabs" role="tablist" aria-label="Keyboard layer">
       {BOARD_LAYERS.map((l) => (
         <button
           key={l.id}
@@ -20,8 +24,9 @@ export function BoardLayerTabs({ board, onChange, counts }: Props) {
           title={l.reach[0].toUpperCase() + l.reach.slice(1)}
           onClick={() => onChange(l.id)}
         >
-          {l.name}
-          {counts[l.id] > 0 && <span className="count">{counts[l.id]}</span>}
+          <ChoiceLabel text={l.name} />
+          {HINTS[l.id] && <span className="tab-hint">{HINTS[l.id]}</span>}
+          {counts[l.id] > 0 && <span className="tag count">{counts[l.id]}</span>}
         </button>
       ))}
     </div>
